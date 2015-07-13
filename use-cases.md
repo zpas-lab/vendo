@@ -6,7 +6,7 @@
 from what's out there (relatively; absolutely, it's not very similar). Also look at the other tools and try stealing too if they have some
 worthy chunks of code. (As long as license is OK for us.)
 
-**TODO:** For all *pre-commit* hooks described below (i.e. _vendor-check-*_ commands), think through if they should check the "current
+**TODO:** For all *pre-commit* hooks described below (i.e. _vendo-check-*_ commands), think through if they should check the "current
 filesystem" (working dir), or "what is git-added" ("index" in git parlance?). Consider including the following in the hook: `git stash -q
 --keep-index; trap 'git stash pop -q' EXIT` (see: [Tips for using pre-commit
 hook](http://codeinthehole.com/writing/tips-for-using-a-git-pre-commit-hook/)).
@@ -18,26 +18,26 @@ if our tool works acceptably, or not.
 it at the moment.
 
 **FIXME:** To make some operations simpler, and all of the idea overally, maybe require that all the *.git/.hg/.bzr* subdirs in *_vendor*
-MUST be deleted? (and do this deletion in *vendor-add*);
+MUST be deleted? (and do this deletion in *vendo-add*);
   - (+) simpler regular operation and many commands;
-  - (-) *vendor-update* somewhat harder for user: he/she cannot easily verify & browse the subrepo's history;
+  - (-) *vendo-update* somewhat harder for user: he/she cannot easily verify & browse the subrepo's history;
     - but this should really be needed only during the update; afterwards, after new version is fully committed into the main repo, he/she
       shouldn't need to browse history anymore;
   - (-) may be harder to introduce git submodules in future; (or not? consider YAGNI)
   - (-) if someone has something important in this *.git/...* repo locally, it would be lost;
   - (+?) maybe then we can reuse bigger parts of http://github.com/skelterjohn/wgo ?
   - actually, we already don't use *.git/...* much: only really when needed, otherwise we just check it as an additional safeguard (in the
-    _vendor-check-*_ commands);
+    _vendo-check-*_ commands);
 
-List of subcommands of the vendor tool, as planned in below points (specific names are not final, can be changed):
+List of subcommands of the vendo tool, as planned in below points (specific names are not final, can be changed):
 
-    vendor-freeze  # equals: (vendor-forget; foreach GOOS,GOARCH {vendor-add}; vendor-ignore)
-    vendor-update
-    vendor-check-patches
-    vendor-check-consistency
-    vendor-check-dependencies
+    vendo-recreate  # internal subcommands: (vendo-forget; foreach GOOS,GOARCH {vendo-add}; vendo-ignore)
+    vendo-update
+    vendo-check-patches
+    vendo-check-consistency
+    vendo-check-dependencies
 
-Example directory structure of a project using the vendor tool, on user's local disk (checkouted):
+Example directory structure of a project using the vendo tool, on user's local disk (checkouted):
 
     .git/              #   - main project's repository metadata
     libfoo/            # \
@@ -46,7 +46,7 @@ Example directory structure of a project using the vendor tool, on user's local 
       fum/             #  |
         main.go        # /
     vendor.json        # \
-    _vendor/           #  |- managed by 'vendor' tool; checked-in to main repo
+    _vendor/           #  |- managed by 'vendo' tool; checked-in to main repo
       .gitignore       # /
       github.com/
         bradfitz/
@@ -77,14 +77,14 @@ Example directory structure of a project using the vendor tool, on user's local 
    3. A warning/error should be printed if some dependencies cannot be found in *_vendor* or GOPATH; (user must download them explicitly);
    4. *[Note]* Some pkgs may already be present in *_vendor*;
    5. **IMPLEMENTATION:**
-      1. `vendor-forget`;
+      1. `vendo-forget`;
          1. `git 'forget' _vendor`;
          2. `mv vendor.json vendor.json.old`; [**FIXME**: `git checkout vendor.json; git mv vendor.json vendor.json.old` ?]
          3. `rm _vendor/.gitignore`;
-            * *[Note]* We must do this to remove a "`/`", which should be present in *_vendor/.gitignore* as result of *vendor-ignore*
-              command. Also, we want to do this to make sure we're starting with a "clean slate" - this simplifies logic of *vendor-add*, as
+            * *[Note]* We must do this to remove a "`/`", which should be present in *_vendor/.gitignore* as result of *vendo-ignore*
+              command. Also, we want to do this to make sure we're starting with a "clean slate" - this simplifies logic of *vendo-add*, as
               it can now work in a purely additive fashion;
-      2. `vendor-add -platforms=linux_amd64,darwin_amd64[,...] [./...]`;
+      2. `vendo-add -platforms=linux_amd64,darwin_amd64[,...] [./...]`;
          1. analyze all \*.go files (except `_*`, `.*`, `testdata`) for imports, regardless of GOOS and build tags;
             * *[Note]* Just ignoring GOOS and GOARCH here is simpler than trying to parse & match them. As to build tags, we specifically
               want to cover all combinations of them, as we want to make sure *all ever* dependencies of our main project are found.
@@ -104,17 +104,17 @@ Example directory structure of a project using the vendor tool, on user's local 
             5. add pkg to *vendor.json*, keeping any fields from *vendor.json.old* (including "comment", "revision", "revisionDate");
             6. based on *vendor.json*, add `$PKG_REPO_ROOT/.git` (and `.hg`, `.bzr`) to *_vendor/.gitignore*;
             7. `git add _vendor/$PKG_REPO_ROOT`;
-       3. `vendor-ignore`; -- makes sure that any other random pkgs in *_vendor* (i.e. which are not dependencies of the main project, but
+       3. `vendo-ignore`; -- makes sure that any other random pkgs in *_vendor* (i.e. which are not dependencies of the main project, but
           exist there e.g. because of user's GOPATH) are ignored by Git;
           1. `echo / >> _vendor/.gitignore`;
           2. `git add _vendor/.gitignore`;
-       4. *[Note]* Above flow (vendor-forget + vendor-add + vendor-ignore) can be run by a single helper command, e.g. `vendor-freeze`
-          (`vendor-save`? `update`? `rebuild`? `refresh`? or something);
+       4. *[Note]* Above flow (vendo-forget + vendo-add + vendo-ignore) can be run by a single helper command, e.g. `vendo-recreate`
+          (`vendo-save`? `update`? `rebuild`? `refresh`? or something);
 2. User clones the main repo from central server and wants to compile & test it;
    1. Compilation & testing should use the vendored pkgs (i.e. from *_vendor* subdir);
    2. **IMPLEMENTATION**:
       1. `git clone ...`
-      2. `GOPATH=$PROJ/_vendor;$OLD_GOPATH` -- possibly with a helper tool: `GOPATH=$(vendor-gopath)`;
+      2. `GOPATH=$PROJ/_vendor;$OLD_GOPATH` -- possibly with a helper tool: `GOPATH=$(vendo-gopath)`;
       3. `go build ./... ; go test ./...` etc.;
 3. User pulls the new version of the main repo from central server and wants to compile & test it;
    1. *[Note]* Some packages may already exist in *_vendor* subdir (not tracked by Git) from earlier work, and/or because of earlier use of
@@ -129,8 +129,8 @@ Example directory structure of a project using the vendor tool, on user's local 
    2. *[Note]* The repo may be patched internally to fix a bug; it'd be desirable that this is detected and the update stopped;
    3. *[Note]* This will require updating all pkgs which have the same repo;
    4. **IMPLEMENTATION**:
-      1. `vendor-update PKG`;
-         1. `rm _vendor/.gitignore`; (required for a `vendor-add` step below);
+      1. `vendo-update PKG`;
+         1. `rm _vendor/.gitignore`; (required for a `vendo-add` step below);
          2. if `git/hg/bzr status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (unless `-f`|`--force` option provided);
          3. `rm -rf _vendor/$PKG_REPO_ROOT`;
          4. `GOPATH=_vendor go get $PKG`; if failed, **error** (don't revert; user can retry with `-f` option);
@@ -148,11 +148,11 @@ Example directory structure of a project using the vendor tool, on user's local 
          7. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout master)` (*master* should be set by *go get* earlier to the newest published
             revision-id in the repo);
              * **FIXME**: verify if this will always be *"master"* - maybe e.g. *"go1.4"* or something completely different;
-         8. `vendor-add`;
-             * **FIXME**: what with GOOS in the above *vendor-add* call?
+         8. `vendo-add`;
+             * **FIXME**: what with GOOS in the above *vendo-add* call?
              * *[Note]* This will update revision-id & revision-date for $PKG in *vendor.json*;
              * *[Note]* This will also add any new pkgs downloaded because they're dependencies of $PKG;
-         9. `vendor-ignore`;
+         9. `vendo-ignore`;
 6. User does normal coding in the main project. User wants to change the code of the main repo, adding and removing some imports, then build
    & test, then commit the changes, then push them to the central server;
    1. A *pre-commit* hook should detect if new imports were added that are not present in *_vendor* (or some imports removed which are
@@ -161,9 +161,9 @@ Example directory structure of a project using the vendor tool, on user's local 
       1. **IMPLEMENTATION; VARIANT-A** (faster, but won't detect removed repos):
          1. analyze all `*.go` files changed by the commit (except `_*` etc.), including those in *_vendor* subdir; if they add any imports
             from outside main repo, which are not yet in *vendor.json*, then report **error** with appropriate message (list of pkgs and
-            suggestion to call *vendor-add*);
+            suggestion to call *vendo-add*);
       2. **IMPLEMENTTION; VARIANT-B** (slower, but will detect removed repos):
-         1. `vendor-check-consistency`;
+         1. `vendo-check-consistency`;
             1. `git stash -q --keep-index`;
             2. parse *vendor.json*, sort by pkg path;
             3. `os.Walk("_vendor", func...)`, where func...:
@@ -174,9 +174,9 @@ Example directory structure of a project using the vendor tool, on user's local 
                5. return SKIP\_SUBTREE;
             4. if any pkg in *vendor.json* is not visited, then report **error**;
             5. `git stash pop -q`
-         2. `vendor-check-dependencies`;
+         2. `vendo-check-dependencies`;
             1. `git stash -q --keep-index`; (or, work on files retrieved via git from index);
-            2. iterate all \*.go files (except `_*` etc.), extract imports, and transitively their deps (same as in *vendor-add* - extract
+            2. iterate all \*.go files (except `_*` etc.), extract imports, and transitively their deps (same as in *vendo-add* - extract
                common code);
             3. delete all pkgs in "core main repo" - i.e. those in main repo, but not in *_vendor*;
             4. verify that the list is *exactly* equal to contents of *vendor.json*; if not equal, report **error**;
@@ -187,14 +187,14 @@ Example directory structure of a project using the vendor tool, on user's local 
       1. `export GOPATH=$MAIN_REPO/_vendor:$GOPATH`
       2. work work work, edit some \*.go files; go get & go build & go test as needed;
       3. `git commit -a` -- if imports changed, this should fail because of *pre-commit* hook;
-      4. `vendor-freeze`;
+      4. `vendo-recreate`;
       5. `git commit -a` -- should complete successfully;
 7. User wants to patch a repo in *_vendor* to fix a bug in a third-party repo;
    1. A *pre-commit* Git hook detects that changes were made in some packages, and require changing (adding or editing) the repo's
       `"comment"` field in the *vendor.json* file [a new revision-id would be desirable too, but it may not exist in the original repo, thus
       becoming nonsensical; also, old revision-id has advantage of keeping info about base commit; disadvantage is that *vendor.json* drops
       consistency with *_vendor* contents];
-      1. **IMPLEMENTATION** - *"vendor-check-patched"* (*"vendor-check-status"*? *"changes"*?):
+      1. **IMPLEMENTATION** - *"vendo-check-patched"* (*"vendo-check-status"*? *"changes"*?):
          1. `cd _vendor; git status`; if no changes, we're ok, exit early.
          2. find out which repos changed (by taking repo roots from *vendor.json*);
          3. for each changed repo:
@@ -208,11 +208,11 @@ Example directory structure of a project using the vendor tool, on user's local 
                       looks exactly the same as (a), so we cannot differentiate it;
                     * (c) user pulled main repo with updated pkg in *_vendor* (and *vendor.json*), while having old (pre-update) *.git* dir
                       in the pkg's (sub)repo; **FIXME**: analyze if we can detect this sub-case and show appropriate message;
-                      * **FIXME**: solution proposal: run *vendor-update* for the pkg, with a flag which will make it stop after the step:
+                      * **FIXME**: solution proposal: run *vendo-update* for the pkg, with a flag which will make it stop after the step:
                         *"6. if \`git/hg/bzr status [...]"*; (+ updating the "master"/other appropriate branch in *.git/.hg/.bzr*);
                       * **FIXME:** This can also happen if user checkouts from pre-update revision of main repo, to post-update one (and
                         reverse), while having the *.git/...* subdir; we can suggest deleting *.git/...*, or doing appropriate
-                        *vendor-update* each time;
+                        *vendo-update* each time;
                       * *[Note]* We should be able to kinda detect this subcase by checking which revision-id is older. But this is not a
                         reliable test (maybe someone downgraded the pkg on purpose in the main repo because of some reasons?), so better not
                         use it, and just print all known possible explanations and suggested actions.
