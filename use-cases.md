@@ -96,10 +96,12 @@ Example directory structure of a project using the vendo tool, on user's local d
          1. analyze all \*.go files (except `_*`, `.*`, `testdata`) for imports, regardless of GOOS and build tags;
             * *[Note]* Just ignoring GOOS and GOARCH here is simpler than trying to parse & match them. As to build tags, we specifically
               want to cover all combinations of them, as we want to make sure *all ever* dependencies of our main project are found.
+            * *[Note]* In this step only, we don't want to use `go list`, but a custom Go parser. That's because we want to "greedily" find
+              any possible imports for any possible combinations of build tags.
          2. build a transitive list of import dependencies. If imported pkg is not found in GOPATH (including *_vendor*), then report
             **error**, and exit. To build the import list we use `go list`, because it handles build tags (we assume that we want all the
-            imports built in "default" configuration, i.e. with no build tags). Finally, `go list` result depends on GOOS and GOARCH, so we
-            merge result from every GOOS & GOARCH combination (as listed in `-platforms` **mandatory** argument).
+            third-party/external imports built in "default" configuration, i.e. with no build tags). Finally, `go list` result depends on
+            GOOS and GOARCH, so we merge result from every GOOS & GOARCH combination (as listed in `-platforms` **mandatory** argument).
          3. for each dependency pkg:
             1. if not present in *_vendor*, but present in GOPATH, `git/hg/bzr clone $GOPATH_REPO _vendor/$PKG_REPO_ROOT` (unless option
                `--clone=false` is provided), and copy the source repo's origin URL to target repo (e.g. `cd $PKG_REPO_ROOT; git remote set
