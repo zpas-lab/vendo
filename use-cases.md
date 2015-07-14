@@ -6,10 +6,17 @@
 from what's out there (relatively; absolutely, it's not very similar). Also look at the other tools and try stealing too if they have some
 worthy chunks of code. (As long as license is OK for us.)
 
-**TODO:** For all *pre-commit* hooks described below (i.e. _vendo-check-*_ commands), think through if they should check the "current
-filesystem" (working dir), or "what is git-added" ("index" in git parlance?). Consider including the following in the hook: `git stash -q
---keep-index; trap 'git stash pop -q' EXIT` (see: [Tips for using pre-commit
-hook](http://codeinthehole.com/writing/tips-for-using-a-git-pre-commit-hook/)).
+**NOTE:** The tool will store an additional field `"repositoryPath"` in the *vendor.json* file; this is allowed by
+*[vendor-spec](https://github.com/kardianos/vendor-spec)*. In initial versions, for easier coding, it also won't retain any unknown fields
+in *vendor.json*; this is an **incompatibility** with *vendor-spec*. TODO: [LATER] improve it be compatible with *vendor-spec* (retain the
+unknown fields).
+
+**NOTE:** All the *pre-commit* hooks described below (i.e. _vendo-check-*_ commands) are assumed to check only "what is git-added" ("index"
+in git parlance?), vs. what's in previous commit. Because that is what's going to make the contents of the new commit. In other words, each
+of the checks should be wrapped with the following *bash* lines: `git stash -q --keep-index; trap 'git stash pop -q' EXIT` (see: [Tips for
+using pre-commit hook](http://codeinthehole.com/writing/tips-for-using-a-git-pre-commit-hook/)). Unless the hook is carefully written in
+such way that it's indifferent to that (i.e. only compares "staged" files to "previous commit" files), and then it should state so in usage
+information. This also means that the hooks shall ignore git untracked & unstaged files.
 
 **TODO:** What if vendored repos have Git submodules? At least we should detect such situation, so that we can then stop and look carefully
 if our tool works acceptably, or not.
@@ -17,7 +24,7 @@ if our tool works acceptably, or not.
 **TODO:** [LATER] Also support vendoring specific commandline tools (e.g. go2xunit) with dependencies. But not now, we don't actually need
 it at the moment.
 
-**FIXME:** To make some operations simpler, and all of the idea overally, maybe require that all the *.git/.hg/.bzr* subdirs in *_vendor*
+**TODO:** To make some operations simpler, and all of the idea overally, maybe require that all the *.git/.hg/.bzr* subdirs in *_vendor*
 MUST be deleted? (and do this deletion in *vendo-add*);
   - (+) simpler regular operation and many commands;
   - (-) *vendo-update* somewhat harder for user: he/she cannot easily verify & browse the subrepo's history;
@@ -76,15 +83,16 @@ Example directory structure of a project using the vendo tool, on user's local d
       ignored pkg separately, because they may differ per user);
    3. A warning/error should be printed if some dependencies cannot be found in *_vendor* or GOPATH; (user must download them explicitly);
    4. *[Note]* Some pkgs may already be present in *_vendor*;
-   5. **IMPLEMENTATION:**
-      1. `vendo-forget`;
+   5. **IMPLEMENTATION** - *vendo-recreate -platforms=linux_amd64,darwin_amd64[,...]*:
+      1. internal subcommand `vendo-forget`:
          1. `git 'forget' _vendor`;
-         2. `mv vendor.json vendor.json.old`; [**FIXME**: `git checkout vendor.json; git mv vendor.json vendor.json.old` ?]
-         3. `rm _vendor/.gitignore`;
+         2. `mv vendor.json vendor.json.old`; (internally, *vendor.json.old* may exist only in memory, doesn't have to be created on disk);
+         3. `rm vendor.json`;
+         4. `rm _vendor/.gitignore`;
             * *[Note]* We must do this to remove a "`/`", which should be present in *_vendor/.gitignore* as result of *vendo-ignore*
               command. Also, we want to do this to make sure we're starting with a "clean slate" - this simplifies logic of *vendo-add*, as
               it can now work in a purely additive fashion;
-      2. `vendo-add -platforms=linux_amd64,darwin_amd64[,...] [./...]`;
+      2. internal subcommand `vendo-add -platforms=linux_amd64,darwin_amd64[,...] [./...]`;
          1. analyze all \*.go files (except `_*`, `.*`, `testdata`) for imports, regardless of GOOS and build tags;
             * *[Note]* Just ignoring GOOS and GOARCH here is simpler than trying to parse & match them. As to build tags, we specifically
               want to cover all combinations of them, as we want to make sure *all ever* dependencies of our main project are found.
@@ -104,12 +112,10 @@ Example directory structure of a project using the vendo tool, on user's local d
             5. add pkg to *vendor.json*, keeping any fields from *vendor.json.old* (including "comment", "revision", "revisionDate");
             6. based on *vendor.json*, add `$PKG_REPO_ROOT/.git` (and `.hg`, `.bzr`) to *_vendor/.gitignore*;
             7. `git add _vendor/$PKG_REPO_ROOT`;
-       3. `vendo-ignore`; -- makes sure that any other random pkgs in *_vendor* (i.e. which are not dependencies of the main project, but
-          exist there e.g. because of user's GOPATH) are ignored by Git;
+       3. internal subcommand `vendo-ignore`; -- makes sure that any other random pkgs in *_vendor* (i.e. which are not dependencies of the
+          main project, but exist there e.g. because of user's GOPATH) are ignored by Git;
           1. `echo / >> _vendor/.gitignore`;
           2. `git add _vendor/.gitignore`;
-       4. *[Note]* Above flow (vendo-forget + vendo-add + vendo-ignore) can be run by a single helper command, e.g. `vendo-recreate`
-          (`vendo-save`? `update`? `rebuild`? `refresh`? or something);
 2. User clones the main repo from central server and wants to compile & test it;
    1. Compilation & testing should use the vendored pkgs (i.e. from *_vendor* subdir);
    2. **IMPLEMENTATION**:
@@ -129,30 +135,33 @@ Example directory structure of a project using the vendo tool, on user's local d
    2. *[Note]* The repo may be patched internally to fix a bug; it'd be desirable that this is detected and the update stopped;
    3. *[Note]* This will require updating all pkgs which have the same repo;
    4. **IMPLEMENTATION**:
-      1. `vendo-update PKG`;
+      1. `vendo-update -platforms=linux_amd64,darwin_amd64[,...] PKG`;
          1. `rm _vendor/.gitignore`; (required for a `vendo-add` step below);
          2. if `git/hg/bzr status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (unless `-f`|`--force` option provided);
          3. `rm -rf _vendor/$PKG_REPO_ROOT`;
          4. `GOPATH=_vendor go get $PKG`; if failed, **error** (don't revert; user can retry with `-f` option);
              * what if the pkg is in "external" GOPATH? (i.e. out of *_vendor*);
                * setting `GOPATH=_vendor` (instead of earlier proposed `GOPATH=_vendor;$GOPATH`) should fix this issue;
-         5. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout $PKG_REPO_REVISION)`; if failed, **error**; ($PKG_REPO_REVISION comes from
+         5. Remember for later the branch or revision used by *go get*:
+            `(cd $PKG_REPO_ROOT; git symbolic-ref -q --short HEAD || git rev-parse HEAD`; - store the output in $GO_GET_REVISION;
+         6. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout $PKG_REPO_REVISION)`; if failed, **error**; ($PKG_REPO_REVISION comes from
             *vendor.json* file);
-         6. if `git/hg/bzr status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (this means that the repo was patched locally after
+         7. if `git/hg/bzr status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (this means that the repo was patched locally after
             vendoring), unless `--delete-patch` option provided;
             * *[Note]* We've done `rm` on the files, but we did NOT do `git rm` on them (in the main repo). So, after re-creating them, `git
               status` in the main repo should see the same files as before `rm`. So, it should conclude: "meh, nothing changed", i.e. `git
               status` is clean. If `git status` *does* show diff, this means our repo remembers something different (a "patch") than what we
               recreated based on revision-id listed in *vendor.json*. So, we must quit, and print an error message: "vendored pkg is patched
               locally; please merge manually".
-         7. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout master)` (*master* should be set by *go get* earlier to the newest published
-            revision-id in the repo);
-             * **FIXME**: verify if this will always be *"master"* - maybe e.g. *"go1.4"* or something completely different;
-         8. `vendo-add`;
-             * **FIXME**: what with GOOS in the above *vendo-add* call?
+         8. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout $GO_GET_REVISION)`;
+             * *[Note]* We can't just `git checkout master`, because e.g. if tag 'go1' is present in repo, it is chosen by `go get` instead
+               of 'master'.
+         9. `vendo-add`;
+             * *[Note]* Value of argument `-platforms` for *vendo-add* should be copied verbatim from mandatory argument `-platforms` of
+               *vendo-update*;
              * *[Note]* This will update revision-id & revision-date for $PKG in *vendor.json*;
              * *[Note]* This will also add any new pkgs downloaded because they're dependencies of $PKG;
-         9. `vendo-ignore`;
+         10. `vendo-ignore`;
 6. User does normal coding in the main project. User wants to change the code of the main repo, adding and removing some imports, then build
    & test, then commit the changes, then push them to the central server;
    1. A *pre-commit* hook should detect if new imports were added that are not present in *_vendor* (or some imports removed which are
@@ -173,12 +182,13 @@ Example directory structure of a project using the vendo tool, on user's local d
                4. mark pkg visited;
                5. return SKIP\_SUBTREE;
             4. if any pkg in *vendor.json* is not visited, then report **error**;
+            5. **TODO:** check that any *.git/.hg/.bzr* subdirs, if present, are at locations noted in $PKG_REPO_ROOT fields;
             5. `git stash pop -q`
          2. `vendo-check-dependencies`;
             1. `git stash -q --keep-index`; (or, work on files retrieved via git from index);
             2. iterate all \*.go files (except `_*` etc.), extract imports, and transitively their deps (same as in *vendo-add* - extract
                common code);
-            3. delete all pkgs in "core main repo" - i.e. those in main repo, but not in *_vendor*;
+            3. delete from the list all pkgs in "core main repo" - i.e. those in main repo, but not in *_vendor*;
             4. verify that the list is *exactly* equal to contents of *vendor.json*; if not equal, report **error**;
             5. `git stash pop -q`;
    2. A tool must be available to auto-update (add & remove) packages in *_vendor* dir to satisfy the above *pre-commit* check; (still, we
@@ -200,24 +210,31 @@ Example directory structure of a project using the vendo tool, on user's local d
          3. for each changed repo:
             1. if has *.git/.hg/.bzr*, then:
                1. if current revision (via git/hg/bzr) differs from revision-id from *vendor.json*, report **error**;
-                  * **FIXME**: make sure this hook is compatible with the other hooks (that they don't overlap some areas, resolving them in
-                    incompatible ways);
-                  * *[Note]* Possible reasons for such situation:
+                  * *[Note]* The error message should list all possible (known) cases and suggested solutions. Suggested message contents:
+                        The revision in local repository at $PKG_REPO_ROOT:
+                          $PKG_LOCAL_REVISION $PKG_LOCAL_REV_DATE $PKG_LOCAL_REV_COMMENT
+                        is inconsistent with information stored in 'vendor.json' for package $PKG:
+                          $PKG_REPO_REVISION $PKG_REPO_REV_DATE
+                          comment: $PKG_JSON_COMMENT
+                        To fix the inconsistency, you are advised do one of the following actions,
+                        depending on which is most appropriate in your case:
+                          a) revert $PKG_REPO_ROOT to $PKG_REPO_REVISION;
+                          b) update "revision" in 'vendor.json' to $PKG_LOCAL_REVISION;
+                          c) delete $PKG_REPO_ROOT/.git   [TODO: or .hg or .bzr]
+                  * *[Note]* This error case is also detected by *vendo-check-consistency* - make sure both commands return the same error
+                    message.
+                  * *[Note]* Possible (known) reasons for such situation:
                     * (a) user did `go get -u` without changing *vendor.json*;
                     * (b) user did a patch in the subrepo, then did `git commit` in the subrepo - that would be OK here, but on disk this
                       looks exactly the same as (a), so we cannot differentiate it;
                     * (c) user pulled main repo with updated pkg in *_vendor* (and *vendor.json*), while having old (pre-update) *.git* dir
-                      in the pkg's (sub)repo; **FIXME**: analyze if we can detect this sub-case and show appropriate message;
-                      * **FIXME**: solution proposal: run *vendo-update* for the pkg, with a flag which will make it stop after the step:
+                      in the pkg's (sub)repo; (see also case (d) below, as it's effectively the same);
+                      * solution proposal: run *vendo-update* for the pkg, with a flag which will make it stop after the step:
                         *"6. if \`git/hg/bzr status [...]"*; (+ updating the "master"/other appropriate branch in *.git/.hg/.bzr*);
-                      * **FIXME:** This can also happen if user checkouts from pre-update revision of main repo, to post-update one (and
+                    * (d) user checkouts from pre-update revision of main repo, to post-update one (and
                         reverse), while having the *.git/...* subdir; we can suggest deleting *.git/...*, or doing appropriate
                         *vendo-update* each time;
-                      * *[Note]* We should be able to kinda detect this subcase by checking which revision-id is older. But this is not a
-                        reliable test (maybe someone downgraded the pkg on purpose in the main repo because of some reasons?), so better not
-                        use it, and just print all known possible explanations and suggested actions.
-               2. `cd $PKG_REPO_ROOT; git/hg/... status`; if clean, report **error**, exit; (internal error: we thought it's dirty, but
-                  inside it looks like it's not dirty);
+               2. `cd $PKG_REPO_ROOT; git/hg/... status`; if clean, go to next repo (this repo is ok);
                3. otherwise (not clean), *assume repo is "dirty"/"patched"* -- see points below;
             2. assume repo is "dirty"/"patched"; for this repo, check if `"comment"` in *vendor.json* is changed between pre-commit and
                post-commit; if not, report **error** with message asking user to change the "comment" in *vendor.json* (user should notify
