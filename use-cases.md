@@ -46,33 +46,34 @@ List of subcommands of the vendo tool, as planned in below points (specific name
 
 Example directory structure of a project using the vendo tool, on user's local disk (checkouted):
 
-    .git/              #   - main project's repository metadata
-    libfoo/            # \
-      foo.go           #  |
-    cmd/               #  |- main project's source code
-      fum/             #  |
-        main.go        # /
-    vendor.json        # \
-    _vendor/           #  |- managed by 'vendo' tool; checked-in to main repo
-      .gitignore       # /
-      github.com/
-        bradfitz/
-          iter/        #   - imported by libfoo/foo.go; checked-in to main repo
-            .git/      # NOTE: .git/ not checked-in to main repo; listed in _vendor/.gitignore
-            iter.go
-        rsc/
-          c2go/        # \   NOTE:
-            .git/      #  |- not imported by main project => NOT CHECKED-IN to main repo,
-            main.go    # /   fully ignored because of "/" in _vendor/.gitignore
-      labix.org/
-        v2/
-          mgo/         #   - imported by libfoo/foo.go; checked-in to main repo
-            .bzr/      # NOTE: .bzr/ not checked-in to main repo; listed in _vendor/.gitignore
-            mgo.go
-      code.google.com/
-        p/
-          gofpdf/      #   - imported by libfoo; checked-in to main repo
-            gofpdf.go  # NOTE: no .hg/.bzr/.git directory
+    .git/                #   - main project's repository metadata
+    libfoo/              # \
+      foo.go             #  |
+    cmd/                 #  |- main project's source code
+      fum/               #  |
+        main.go          # /
+    vendor.json          # \
+    _vendor/             #  |- managed by 'vendo' tool; checked-in to main repo
+      .gitignore         #  |
+      src/               # /
+        github.com/
+          bradfitz/
+            iter/        #   - imported by libfoo/foo.go; checked-in to main repo
+              .git/      # NOTE: .git/ not checked-in to main repo; listed in _vendor/.gitignore
+              iter.go
+          rsc/
+            c2go/        # \   NOTE:
+              .git/      #  |- not imported by main project => NOT CHECKED-IN to main repo,
+              main.go    # /   fully ignored because of "/" in _vendor/.gitignore
+        labix.org/
+          v2/
+            mgo/         #   - imported by libfoo/foo.go; checked-in to main repo
+              .bzr/      # NOTE: .bzr/ not checked-in to main repo; listed in _vendor/.gitignore
+              mgo.go
+        code.google.com/
+          p/
+            gofpdf/      #   - imported by libfoo; checked-in to main repo
+              gofpdf.go  # NOTE: no .hg/.bzr/.git directory
 
 1. User adds pkgs from GOPATH to *_vendor* directory. User has some third-party pkgs already in GOPATH, non-vendored (i.e. outside the main
    repo), and wants to save their full source code ("vendor" them) into into *_vendor* subdir of the main repo, keeping information about

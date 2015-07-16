@@ -20,7 +20,7 @@ type VendorFile struct {
 
 	// Packages represents a collection of vendor packages that have been copied
 	// locally. Each entry represents a single Go package.
-	Packages []VendorPackage `json:"package"`
+	Packages []*VendorPackage `json:"package"`
 }
 
 type VendorPackage struct {
@@ -77,3 +77,18 @@ func ReadVendorFile(path string) (*VendorFile, error) {
 
 	return &data, nil
 }
+
+func (v *VendorFile) MapCanonical() map[string]*VendorPackage {
+	m := map[string]*VendorPackage{}
+	for _, pkg := range v.Packages {
+		// FIXME(mateuszc): resolve somehow situation when identical .Canonical fields are repeated
+		m[pkg.Canonical] = pkg
+	}
+	return m
+}
+
+type PackagesOrder []*VendorPackage
+
+func (p PackagesOrder) Len() int           { return len(p) }
+func (p PackagesOrder) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p PackagesOrder) Less(i, j int) bool { return p[i].Canonical < p[j].Canonical }
