@@ -103,7 +103,8 @@ Example directory structure of a project using the vendo tool, on user's local d
             **error**, and exit. To build the import list we use `go list`, because it handles build tags (we assume that we want all the
             third-party/external imports built in "default" configuration, i.e. with no build tags). Finally, `go list` result depends on
             GOOS and GOARCH, so we merge result from every GOOS & GOARCH combination (as listed in `-platforms` **mandatory** argument).
-         3. for each dependency pkg:
+         3. add `.git` (and `.hg`, `.bzr`) to *_vendor/.gitignore*;
+         4. for each dependency pkg:
             1. if not present in *_vendor*, but present in GOPATH, `git/hg/bzr clone $GOPATH_REPO _vendor/$PKG_REPO_ROOT` (unless option
                `--clone=false` is provided), and copy the source repo's origin URL to target repo (e.g. `cd $PKG_REPO_ROOT; git remote set
                origin $REPO_URL`);
@@ -113,8 +114,7 @@ Example directory structure of a project using the vendo tool, on user's local d
                1. if has *.git/.hg/.bzr* subdir, update *vendor.json* revision-id & revision-date;
                2. else if pkg not present in *vendor.json.old*, then **error**: "cannot detect repo type";
             5. add pkg to *vendor.json*, keeping any fields from *vendor.json.old* (including "comment", "revision", "revisionDate");
-            6. based on *vendor.json*, add `$PKG_REPO_ROOT/.git` (and `.hg`, `.bzr`) to *_vendor/.gitignore*;
-            7. `git add _vendor/$PKG_REPO_ROOT`;
+            6. `git add _vendor/$PKG_REPO_ROOT`;
        3. internal subcommand `vendo-ignore`; -- makes sure that any other random pkgs in *_vendor* (i.e. which are not dependencies of the
           main project, but exist there e.g. because of user's GOPATH) are ignored by Git;
           1. `echo / >> _vendor/.gitignore`;

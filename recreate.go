@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/parser"
@@ -98,8 +97,13 @@ func runRecreate() error {
 			missing, gopath, strings.Join(missing, " "))
 	}
 
+	err = writeVcsGitignore()
+	if err != nil {
+		return err
+	}
+
 	// Clone missing pkgs to _vendor/ from GOPATH
-	// (use-cases.md 1.5.2.3.1)
+	// (use-cases.md 1.5.2.4.1)
 	if *clone {
 		err := imports.cloneNonVendoredPackages(vendorAbsPath)
 		if err != nil {
@@ -108,7 +112,7 @@ func runRecreate() error {
 	}
 
 	// Verify that all dependency pkgs are now in _vendor/
-	// (use-cases.md 1.5.2.3.2)
+	// (use-cases.md 1.5.2.4.2)
 	missing, err = imports.findMissing(vendorAbsPath)
 	if err != nil {
 		return err
@@ -122,12 +126,31 @@ func runRecreate() error {
 	if err != nil {
 		return err
 	}
+	pkgsNew.Comment = pkgs.Comment
 
-	fmt.Println(imports)
-	buf, _ := json.MarshalIndent(pkgsNew, "", "  ")
-	fmt.Println(string(buf))
+	err = gitAddPackages(pkgsNew.Packages)
+	if err != nil {
+		return err
+	}
 
-	panic("NIY")
+	// Write the new vendor.json, and add it to Git
+	err = pkgsNew.WriteTo(JsonPath)
+	if err != nil {
+		return err
+	}
+	_, err = Command("git", "add", "--", JsonPath).OutputLines()
+	if err != nil {
+		return err
+	}
+
+	// VENDO-IGNORE
+
+	err = modifyGitignoreFinal()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Make Git "forget" the _vendor/ dir contents
@@ -353,7 +376,7 @@ func clonePackage(importPath, fromGopath, toGopath string, skipRepos map[string]
 // buildVendorFile builds contents of new vendor.json file. It refreshes each dependency's
 // revision-id & revision-date from repository (if available), or copies them
 // from old vendor.json. If neither has it, reports error.
-// (use-cases.md 1.5.2.3.4 - 1.5.2.3.5)
+// (use-cases.md 1.5.2.4.4 - 1.5.2.4.5)
 func (imports Imports) buildVendorFile(pkgsMap map[string]*VendorPackage) (VendorFile, error) {
 	fmt.Println()
 	// pkgsMap := pkgs.MapCanonical()
@@ -375,7 +398,7 @@ func (imports Imports) buildVendorFile(pkgsMap map[string]*VendorPackage) (Vendo
 		if vcs == nil || repoRoot == "." {
 			// Reuse old repo info if no repo found on disk.
 			// TODO(mateuszc): instead of 'repoRoot=="."' above, `cd _vendor; FindRoot("src/"+imp)`
-			// (use-cases.md 1.5.2.3.4.2)
+			// (use-cases.md 1.5.2.4.4.2)
 			if pkg == nil {
 				// FIXME(mateuszc): find if any parent dirs are in vendor.json
 				return pkgsNew, fmt.Errorf("cannot find repository root for pkg %s either in %s/ or in %s",
@@ -384,7 +407,7 @@ func (imports Imports) buildVendorFile(pkgsMap map[string]*VendorPackage) (Vendo
 			// TODO(mateuszc): update pkg.Local ?
 		} else {
 			// Update the repo info as needed
-			// (use-cases.md 1.5.2.3.4.1)
+			// (use-cases.md 1.5.2.4.4.1)
 
 			if pkg == nil {
 				pkg = &VendorPackage{
@@ -392,7 +415,8 @@ func (imports Imports) buildVendorFile(pkgsMap map[string]*VendorPackage) (Vendo
 				}
 			}
 			pkg.Local = vendorImpDir
-			pkg.RepositoryRoot = repoRoot
+			// RepositoryRoot should be OS-independent, so we use '/' as path separator
+			pkg.RepositoryRoot = filepath.ToSlash(repoRoot)
 			pkg.Revision, err = vcs.Revision(pkg.RepositoryRoot)
 			if err != nil {
 				return pkgsNew, err
@@ -407,6 +431,80 @@ func (imports Imports) buildVendorFile(pkgsMap map[string]*VendorPackage) (Vendo
 	}
 	sort.Sort(PackagesOrder(pkgsNew.Packages))
 	return pkgsNew, nil
+}
+
+// writeGitignore ensures that for any dependency repository, only its "snapshot"
+// is stored in the main repository, without full repo metadata (history, branches,
+// etc.) and without any "submodules" metadata.
+// (use-cases.md 1.5.2.3)
+func writeVcsGitignore() error {
+	gitignore, err := os.OpenFile(GitignorePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer gitignore.Close()
+	for _, vcs := range vcsList {
+		_, err = fmt.Fprintln(gitignore, vcs.Dir)
+		if err != nil {
+			// FIXME(mateuszc): add more context to error msg
+			return err
+		}
+	}
+	// We need to know if file was really synced to disk properly, as it will be read by git in a subsequent command.
+	err = gitignore.Close()
+	if err != nil {
+		// FIXME(mateuszc): add more context to error msg
+		return err
+	}
+	return nil
+}
+
+// gitAddPackages adds contents of all dependency repositories to main project's repository.
+// (use-cases.md 1.5.2.4.6)
+func gitAddPackages(packages []*VendorPackage) error {
+	added := map[string]bool{}
+	for _, pkg := range packages {
+		if added[pkg.RepositoryRoot] {
+			continue
+		}
+
+		// Add the dependency repository to main project's repository.
+		// NOTE(mateuszc): the trailing "/" seems to make a world of a difference (as of git 2.1.):
+		// without "/", git seems to want to treat the dir as a submodule.
+		_, err := Command("git", "add", "--", pkg.RepositoryRoot+"/").OutputLines()
+		if err != nil {
+			return err
+		}
+		added[pkg.RepositoryRoot] = true
+	}
+	return nil
+}
+
+// modifyGitignoreFinal makes sure that any other random pkgs in *_vendor* (i.e. which are not dependencies of the
+// main project, but exist there e.g. because of user's GOPATH) are ignored by Git.
+// (use-cases.md 1.5.3)
+func modifyGitignoreFinal() error {
+	gitignore, err := os.OpenFile(GitignorePath, os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer gitignore.Close()
+	_, err = fmt.Fprintf(gitignore, "/\n!.gitignore\n")
+	if err != nil {
+		// FIXME(mateuszc): add more context to error msg
+		return err
+	}
+	// We need to know if file was really synced to disk properly, as it will be read by git in a subsequent command.
+	err = gitignore.Close()
+	if err != nil {
+		// FIXME(mateuszc): add more context to error msg
+		return err
+	}
+	_, err = Command("git", "add", GitignorePath).OutputLines()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func hasImportPrefix(imp, prefix string) bool {

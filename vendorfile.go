@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"os"
 )
 
@@ -78,6 +79,19 @@ func ReadVendorFile(path string) (*VendorFile, error) {
 	return &data, nil
 }
 
+func (v *VendorFile) WriteTo(path string) error {
+	buf, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		// TODO(mateuszc): add more context to error message?
+		return err
+	}
+	err = ioutil.WriteFile(path, buf, 0644)
+	if err != nil {
+		// TODO(mateuszc): add more context to error message?
+		return err
+	}
+	return nil
+}
 func (v *VendorFile) MapCanonical() map[string]*VendorPackage {
 	m := map[string]*VendorPackage{}
 	for _, pkg := range v.Packages {
