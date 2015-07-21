@@ -36,7 +36,11 @@ func runRecreate() error {
 		return fmt.Errorf("non-empty '-platforms' argument must be provided")
 	}
 
-	// FIXME(mateuszc): make sure we're in project's root dir (with .git)
+	// Make sure we're in project's root dir (with .git)
+	exist := Exist{}.Dir(".git")
+	if exist.Err != nil {
+		return exist.Err
+	}
 
 	// `mv vendor.json vendor.json.old`; (internally, *vendor.json.old* may exist only in memory, doesn't have to be created on disk);
 	// (use-cases.md 1.5.1.2 - 1.5.1.3)
