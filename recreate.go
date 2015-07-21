@@ -358,7 +358,7 @@ func clonePackage(importPath, fromGopath, toGopath string, skipRepos map[string]
 
 	// Do the actual cloning.
 	// FIXME(mateuszc): make the below Println more user-friendly; ideally, print the executed command (?)
-	fmt.Println("#", importPath, fromRepo, vcs.Dir)
+	fmt.Println("#", importPath, fromRepo, vcs.Dir())
 	rel, err := filepath.Rel(fromPackage, fromRepo)
 	if err != nil {
 		return err
@@ -448,7 +448,7 @@ func writeVcsGitignore() error {
 	}
 	defer gitignore.Close()
 	for _, vcs := range vcsList {
-		_, err = fmt.Fprintln(gitignore, vcs.Dir)
+		_, err = fmt.Fprintln(gitignore, vcs.Dir())
 		if err != nil {
 			// FIXME(mateuszc): add more context to error msg
 			return err

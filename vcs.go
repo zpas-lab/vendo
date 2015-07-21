@@ -9,50 +9,79 @@ import (
 type VcsList []Vcs
 
 var vcsList = VcsList{
-	{
-		Dir:   ".git",
-		Clone: func(from, to string) error { return vcsClone("git", from, to) },
-		Revision: func(root string) (string, error) {
-			return Command("git", "--git-dir", filepath.Join(root, ".git"), "rev-parse", "HEAD").OutputOneLine()
-		},
-		RevisionTime: func(root string) (string, error) {
-			// FIXME(mateuszc): verify that timeFormat is correct for %aD, or
-			// use different git format
-			return vcsRevisionTime("Mon, 2 Jan 2006 15:04:05 -0700",
-				"git", "--git-dir", filepath.Join(root, ".git"), "log", "-1", "--pretty=format:%aD")
-		},
-	},
-	{
-		Dir:   ".hg",
-		Clone: func(from, to string) error { return vcsClone("hg", from, to) },
-		Revision: func(root string) (string, error) {
-			return Command("hg", "-R", root, "parent", "--template", "{node}").OutputOneLine()
-		},
-		RevisionTime: func(root string) (string, error) {
-			return vcsRevisionTime(time.RFC3339,
-				"hg", "-R", root, "parent", "--template", "{date | rfc3339date}")
-		},
-	},
-	{
-		Dir: ".bzr",
-		Clone: func(from, to string) error {
-			// FIXME(mateuszc): verify that 'to' is a dir before removing
-			err := os.Remove(to)
-			if err != nil {
-				return err
-			}
-			return vcsClone("bzr", from, to)
-		},
-		Revision: func(root string) (string, error) {
-			return Command("bzr", "version-info", "--custom", "--template", "{revision_id}", root).OutputOneLine()
-		},
-		RevisionTime: func(root string) (string, error) {
-			// Bzr date format seems to use "+0000", not "Z", for GMT, see:
-			// http://doc.bazaar.canonical.com/beta/en/user-guide/version_info.html
-			return vcsRevisionTime("2006-01-02 15:04:05 -0700",
-				"bzr", "version-info", "--custom", "--template", "{date}", root)
-		},
-	},
+	git{},
+	mercurial{},
+	bazaar{},
+}
+
+// Vcs has information about a specific Version Control System (like git, Mercurial, SVN, ...).
+type Vcs interface {
+	// TODO(mateuszc): change "Dir" to "func IsRoot(path string) bool"
+	Dir() string
+	// Clone copies a repository between specified directories. The to directory must exist and be empty.
+	Clone(from, to string) error
+	Revision(root string) (string, error)
+	RevisionTime(root string) (string, error)
+}
+
+type git struct{}
+
+func (git) Dir() string {
+	return ".git"
+}
+func (git) Clone(from, to string) error {
+	_, err := Command("git", "clone", "--", from, to).OutputLines()
+	return err
+}
+func (git) Revision(root string) (string, error) {
+	return Command("git", "--git-dir", filepath.Join(root, ".git"), "rev-parse", "HEAD").OutputOneLine()
+}
+func (git) RevisionTime(root string) (string, error) {
+	// FIXME(mateuszc): verify that timeFormat is correct for %aD, or
+	// use different git format
+	return vcsRevisionTime("Mon, 2 Jan 2006 15:04:05 -0700",
+		"git", "--git-dir", filepath.Join(root, ".git"), "log", "-1", "--pretty=format:%aD")
+}
+
+type mercurial struct{}
+
+func (mercurial) Dir() string {
+	return ".hg"
+}
+func (mercurial) Clone(from, to string) error {
+	_, err := Command("hg", "clone", "--", from, to).OutputLines()
+	return err
+}
+func (mercurial) Revision(root string) (string, error) {
+	return Command("hg", "-R", root, "parent", "--template", "{node}").OutputOneLine()
+}
+func (mercurial) RevisionTime(root string) (string, error) {
+	return vcsRevisionTime(time.RFC3339,
+		"hg", "-R", root, "parent", "--template", "{date | rfc3339date}")
+}
+
+type bazaar struct{}
+
+func (bazaar) Dir() string {
+	return ".bzr"
+}
+func (bazaar) Clone(from, to string) error {
+	// FIXME(mateuszc): verify that 'to' is a dir before removing
+	err := os.Remove(to)
+	if err != nil {
+		return err
+	}
+	_, err = Command("bzr", "clone", "--", from, to).OutputLines()
+	return err
+}
+func (bazaar) Revision(root string) (string, error) {
+	return Command("bzr", "version-info", "--custom", "--template", "{revision_id}", root).OutputOneLine()
+}
+func (bazaar) RevisionTime(root string) (string, error) {
+	// Bzr date format seems to use "+0000", not "Z", for GMT, see:
+	// http://doc.bazaar.canonical.com/beta/en/user-guide/version_info.html
+	return vcsRevisionTime("2006-01-02 15:04:05 -0700",
+		"bzr", "version-info", "--custom", "--template", "{date}", root)
 }
 
 func vcsRevisionTime(timeFormat, command string, args ...string) (string, error) {
@@ -68,21 +97,16 @@ func vcsRevisionTime(timeFormat, command string, args ...string) (string, error)
 	return t.Format(time.RFC3339), nil
 }
 
-func vcsClone(command, from, to string) error {
-	_, err := Command(command, "clone", "--", from, to).OutputLines()
-	return err
-}
-
 // FindRoot goes up the directory tree starting from path, looking for the root
 // directory of any repository of type listed in l.
 //
 // Note: if path is relative, the search doesn't go further up the directory
 // tree than allowed by the path.
-func (l VcsList) FindRoot(path string) (string, *Vcs, error) {
+func (l VcsList) FindRoot(path string) (string, Vcs, error) {
 	// Go up directory tree, until we find a subdir correct for one of the Vcs
 	for {
 		for _, vcs := range l {
-			maybe := filepath.Join(path, vcs.Dir)
+			maybe := filepath.Join(path, vcs.Dir())
 			stat, err := os.Stat(maybe)
 			switch {
 			case os.IsNotExist(err):
@@ -91,7 +115,7 @@ func (l VcsList) FindRoot(path string) (string, *Vcs, error) {
 				return "", nil, err
 			case stat.IsDir():
 				// FIXME(mateuszc): try refactoring to save path (repo root) in the Vcs struct
-				return path, &vcs, nil
+				return path, vcs, nil
 			}
 		}
 
@@ -102,14 +126,4 @@ func (l VcsList) FindRoot(path string) (string, *Vcs, error) {
 		path = parent
 	}
 	return "", nil, nil
-}
-
-// Vcs has information about a specific Version Control System (like git, Mercurial, SVN, ...).
-type Vcs struct {
-	// TODO(mateuszc): change "Dir" to "func IsRoot(path string) bool", and change Vcs into an interface
-	Dir string
-	// Clone copies a repository between specified directories. The to directory must exist and be empty.
-	Clone        func(from, to string) error
-	Revision     func(root string) (string, error)
-	RevisionTime func(root string) (string, error)
 }
