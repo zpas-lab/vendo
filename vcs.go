@@ -22,6 +22,11 @@ type Vcs interface {
 	Clone(from, to string) error
 	Revision(root string) (string, error)
 	RevisionTime(root string) (string, error)
+	// HeadSymbolicRef attempts to retrieve a symbolic name of the currently
+	// checked out revision (e.g. branch or tag name). If not possible, it
+	// returns the same result as Revision.
+	HeadSymbolicRef(root string) (string, error)
+	Checkout(path, revision string) error
 }
 
 type git struct{}
@@ -30,8 +35,7 @@ func (git) Dir() string {
 	return ".git"
 }
 func (git) Clone(from, to string) error {
-	_, err := Command("git", "clone", "--", from, to).OutputLines()
-	return err
+	return Command("git", "clone", "--", from, to).DiscardOutput()
 }
 func (git) Revision(root string) (string, error) {
 	return Command("git", "--git-dir", filepath.Join(root, ".git"), "rev-parse", "HEAD").OutputOneLine()
@@ -42,6 +46,27 @@ func (git) RevisionTime(root string) (string, error) {
 	return vcsRevisionTime("Mon, 2 Jan 2006 15:04:05 -0700",
 		"git", "--git-dir", filepath.Join(root, ".git"), "log", "-1", "--pretty=format:%aD")
 }
+func (git) HeadSymbolicRef(root string) (string, error) {
+	line, err := Command("git", "--git-dir", filepath.Join(root, ".git"), "symbolic-ref", "-q", "--short", "HEAD").
+		LogNever().
+		OutputOneLine()
+	if err == nil {
+		return line, nil
+	} else {
+		return Command("git", "--git-dir", filepath.Join(root, ".git"), "rev-parse", "HEAD").OutputOneLine()
+	}
+}
+func (git) Checkout(root, revision string) error {
+	return Command("git", "--git-dir", filepath.Join(root, ".git"), "--work-tree", root, "checkout", revision).DiscardOutput()
+}
+func (git) IsClean(root, subpath string) (bool, error) {
+	lines, err := Command("git", "--git-dir", filepath.Join(root, ".git"), "--work-tree", root, "status", "--porcelain", subpath).
+		OutputLines()
+	if err != nil {
+		return false, err
+	}
+	return len(lines) == 0, nil
+}
 
 type mercurial struct{}
 
@@ -49,8 +74,7 @@ func (mercurial) Dir() string {
 	return ".hg"
 }
 func (mercurial) Clone(from, to string) error {
-	_, err := Command("hg", "clone", "--", from, to).OutputLines()
-	return err
+	return Command("hg", "clone", "--", from, to).DiscardOutput()
 }
 func (mercurial) Revision(root string) (string, error) {
 	return Command("hg", "-R", root, "parent", "--template", "{node}").OutputOneLine()
@@ -58,6 +82,14 @@ func (mercurial) Revision(root string) (string, error) {
 func (mercurial) RevisionTime(root string) (string, error) {
 	return vcsRevisionTime(time.RFC3339,
 		"hg", "-R", root, "parent", "--template", "{date | rfc3339date}")
+}
+func (mercurial) HeadSymbolicRef(root string) (string, error) {
+	// FIXME(mateuszc): try to retrieve proper "symbolic-ref"
+	return mercurial{}.Revision(root)
+}
+func (mercurial) Checkout(root, revision string) error {
+	// FIXME(mateuszc): make sure if we're ok to use -R or we should use --cwd
+	return Command("hg", "-R", root, "update", revision).DiscardOutput()
 }
 
 type bazaar struct{}
@@ -71,8 +103,7 @@ func (bazaar) Clone(from, to string) error {
 	if err != nil {
 		return err
 	}
-	_, err = Command("bzr", "clone", "--", from, to).OutputLines()
-	return err
+	return Command("bzr", "clone", "--", from, to).DiscardOutput()
 }
 func (bazaar) Revision(root string) (string, error) {
 	return Command("bzr", "version-info", "--custom", "--template", "{revision_id}", root).OutputOneLine()
@@ -82,6 +113,13 @@ func (bazaar) RevisionTime(root string) (string, error) {
 	// http://doc.bazaar.canonical.com/beta/en/user-guide/version_info.html
 	return vcsRevisionTime("2006-01-02 15:04:05 -0700",
 		"bzr", "version-info", "--custom", "--template", "{date}", root)
+}
+func (bazaar) HeadSymbolicRef(root string) (string, error) {
+	// FIXME(mateuszc): try to retrieve proper "symbolic-ref"
+	return bazaar{}.Revision(root)
+}
+func (bazaar) Checkout(root, revision string) error {
+	return Command("bzr", "update", "-r", "revid:"+revision, root).DiscardOutput()
 }
 
 func vcsRevisionTime(timeFormat, command string, args ...string) (string, error) {

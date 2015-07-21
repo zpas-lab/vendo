@@ -139,8 +139,12 @@ Example directory structure of a project using the vendo tool, on user's local d
    3. *[Note]* This will require updating all pkgs which have the same repo;
    4. **IMPLEMENTATION**:
       1. `vendo-update -platforms=linux_amd64,darwin_amd64[,...] PKG`;
-         1. `rm _vendor/.gitignore`; (required for a `vendo-add` step below);
-         2. if `git/hg/bzr status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (unless `-f`|`--force` option provided);
+         1. `rm _vendor/.gitignore`; (required for a `vendo-recreate` step below and for `git status` calls);
+         2. if `git status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (unless `-f`|`--force` option provided);
+            * *[Note]* We don't have to check `cd _vendor/$PKG_REPO_ROOT ; git/hg/bzr status`. If the files are "unmodified" from
+              perspective of the main repo, then it means they're at proper state for building the main project, regardless whether the
+              "subrepos" are consistent. Similarly, if they are "modified" from perspective of the main repo, this means some work was maybe
+              done in the main repo, and this is important to warn about.
          3. `rm -rf _vendor/$PKG_REPO_ROOT`;
          4. `GOPATH=_vendor go get $PKG`; if failed, **error** (don't revert; user can retry with `-f` option);
              * what if the pkg is in "external" GOPATH? (i.e. out of *_vendor*);
@@ -149,7 +153,7 @@ Example directory structure of a project using the vendo tool, on user's local d
             `(cd $PKG_REPO_ROOT; git symbolic-ref -q --short HEAD || git rev-parse HEAD`; - store the output in $GO_GET_REVISION;
          6. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout $PKG_REPO_REVISION)`; if failed, **error**; ($PKG_REPO_REVISION comes from
             *vendor.json* file);
-         7. if `git/hg/bzr status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (this means that the repo was patched locally after
+         7. if `git status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (this means that the repo was patched locally after
             vendoring), unless `--delete-patch` option provided;
             * *[Note]* We've done `rm` on the files, but we did NOT do `git rm` on them (in the main repo). So, after re-creating them, `git
               status` in the main repo should see the same files as before `rm`. So, it should conclude: "meh, nothing changed", i.e. `git
@@ -159,12 +163,11 @@ Example directory structure of a project using the vendo tool, on user's local d
          8. `(cd $PKG_REPO_ROOT; git/hg/bzr checkout $GO_GET_REVISION)`;
              * *[Note]* We can't just `git checkout master`, because e.g. if tag 'go1' is present in repo, it is chosen by `go get` instead
                of 'master'.
-         9. `vendo-add`;
+         9. `vendo-recreate`;
              * *[Note]* Value of argument `-platforms` for *vendo-add* should be copied verbatim from mandatory argument `-platforms` of
                *vendo-update*;
              * *[Note]* This will update revision-id & revision-date for $PKG in *vendor.json*;
              * *[Note]* This will also add any new pkgs downloaded because they're dependencies of $PKG;
-         10. `vendo-ignore`;
 6. User does normal coding in the main project. User wants to change the code of the main repo, adding and removing some imports, then build
    & test, then commit the changes, then push them to the central server;
    1. A *pre-commit* hook should detect if new imports were added that are not present in *_vendor* (or some imports removed which are

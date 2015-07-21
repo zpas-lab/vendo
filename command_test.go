@@ -86,7 +86,7 @@ net/http
 	for _, c := range cases {
 		buf := bytes.NewBuffer(nil)
 		stderr = buf
-		_, err := c.Cmd.OutputLines()
+		err := c.Cmd.DiscardOutput()
 
 		if c.isErr != (err != nil) {
 			test.Errorf("case %q [%s] expected isErr=%v, got err=%v",

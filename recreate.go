@@ -29,8 +29,8 @@ func runRecreate() error {
 		platformsList = flags.String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
 		clone         = flags.Bool("clone", true, "if dependency doesn't exist in _vendor/, clone it from GOPATH")
 	)
-	flags.Parse(os.Args[2:])
 
+	flags.Parse(os.Args[2:])
 	platforms, err := parsePlatforms(*platformsList)
 	if err != nil {
 		// TODO(mateuszc): subcmd usage
@@ -147,7 +147,7 @@ func Recreate(platforms []Platform, clone bool) error {
 	if err != nil {
 		return err
 	}
-	_, err = Command("git", "add", "--", JsonPath).OutputLines()
+	err = Command("git", "add", "--", JsonPath).DiscardOutput()
 	if err != nil {
 		return err
 	}
@@ -166,8 +166,7 @@ func Recreate(platforms []Platform, clone bool) error {
 // (use-cases.md 1.5.1.1)
 func forget() error {
 	// TODO(mateuszc): move this down, just before we start doing first "git add"?
-	cmd := Command("git", "rm", "--cached", "-r", "--ignore-unmatch", "-q", VendorPath)
-	_, err := cmd.OutputLines()
+	err := Command("git", "rm", "--cached", "-r", "--ignore-unmatch", "-q", VendorPath).DiscardOutput()
 	if err != nil {
 		return err
 	}
@@ -478,7 +477,7 @@ func gitAddPackages(packages []*VendorPackage) error {
 		// Add the dependency repository to main project's repository.
 		// NOTE(mateuszc): the trailing "/" seems to make a world of a difference (as of git 2.1.):
 		// without "/", git seems to want to treat the dir as a submodule.
-		_, err := Command("git", "add", "--", pkg.RepositoryRoot+"/").OutputLines()
+		err := Command("git", "add", "--", pkg.RepositoryRoot+"/").DiscardOutput()
 		if err != nil {
 			return err
 		}
@@ -507,7 +506,7 @@ func modifyGitignoreFinal() error {
 		// FIXME(mateuszc): add more context to error msg
 		return err
 	}
-	_, err = Command("git", "add", GitignorePath).OutputLines()
+	err = Command("git", "add", GitignorePath).DiscardOutput()
 	if err != nil {
 		return err
 	}

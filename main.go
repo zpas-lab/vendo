@@ -44,10 +44,6 @@ const (
 	GitignorePath = VendorPath + "/.gitignore"
 )
 
-func runUpdate() error {
-	panic("NIY")
-}
-
 func runCheck() error {
 	panic("NIY")
 }

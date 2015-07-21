@@ -159,6 +159,11 @@ func (cmd *Cmd) OutputOneLine() (string, error) {
 	return lines[0], nil
 }
 
+func (cmd *Cmd) DiscardOutput() error {
+	_, err := cmd.OutputLines()
+	return err
+}
+
 func envToMap(env []string) map[string]string {
 	m := map[string]string{}
 	for _, entry := range env {
