@@ -26,16 +26,21 @@ func runRecreate() error {
 	//  4. *[Note]* Some pkgs may already be present in *_vendor*;
 	flags := flag.NewFlagSet("recreate", flag.ExitOnError)
 	var (
-		platforms = flags.String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
-		clone     = flags.Bool("clone", true, "if dependency doesn't exist in _vendor/, clone it from GOPATH")
+		platformsList = flags.String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
+		clone         = flags.Bool("clone", true, "if dependency doesn't exist in _vendor/, clone it from GOPATH")
 	)
-
 	flags.Parse(os.Args[2:])
-	if *platforms == "" {
+
+	platforms, err := parsePlatforms(*platformsList)
+	if err != nil {
 		// TODO(mateuszc): subcmd usage
-		return fmt.Errorf("non-empty '-platforms' argument must be provided")
+		return err
 	}
 
+	return Recreate(platforms, *clone)
+}
+
+func Recreate(platforms []Platform, clone bool) error {
 	// Make sure we're in project's root dir (with .git)
 	exist := Exist{}.Dir(".git")
 	if exist.Err != nil {
@@ -82,7 +87,7 @@ func runRecreate() error {
 	vendorAbsPath := filepath.Join(cwd, VendorPath)
 	gopath := vendorAbsPath + string(filepath.ListSeparator) + os.Getenv("GOPATH")
 
-	err = imports.addTransitiveDependencies(gopath, *platforms)
+	err = imports.addTransitiveDependencies(gopath, platforms)
 	if err != nil {
 		return err
 	}
@@ -108,7 +113,7 @@ func runRecreate() error {
 
 	// Clone missing pkgs to _vendor/ from GOPATH
 	// (use-cases.md 1.5.2.4.1)
-	if *clone {
+	if clone {
 		err := imports.cloneNonVendoredPackages(vendorAbsPath)
 		if err != nil {
 			return err
@@ -248,17 +253,15 @@ func findImportsGreedily(project string) (Imports, error) {
 // want all the imports built in "default" configuration, i.e. with no build tags). Finally, `go list` result depends on GOOS and GOARCH, so
 // we merge result from every GOOS & GOARCH combination (as listed in `-platforms` **mandatory** argument).
 // (use-cases.md 1.5.2.2)
-func (imports Imports) addTransitiveDependencies(gopath string, platforms string) error {
-	for _, platform := range strings.Split(platforms, ",") {
-		goos, goarch := splitOsArch(platform)
-
+func (imports Imports) addTransitiveDependencies(gopath string, platforms []Platform) error {
+	for _, platform := range platforms {
 		// Add all transitive dependencies reported by 'go list'.
 		deps, err := GoList("{{range .Deps}}{{. | println}}{{end}}", imports.ToSlice()...).
 			WithFailed().
 			Setenv(
 			"GOPATH="+gopath,
-			"GOOS="+goos,
-			"GOARCH="+goarch).
+			"GOOS="+platform.Os,
+			"GOARCH="+platform.Arch).
 			OutputLines()
 		if err != nil {
 			return err
@@ -515,11 +518,24 @@ func hasImportPrefix(imp, prefix string) bool {
 	return imp == prefix || strings.HasPrefix(imp, prefix+"/")
 }
 
-func splitOsArch(platform string) (string, string) {
-	s := strings.SplitN(platform, "_", 2)
-	if len(s) == 1 {
-		// bad input, but we must handle bad OS & ARCH elsewhere anyway
-		return s[0], "UNKNOWN"
+type Platform struct{ Os, Arch string }
+
+func parsePlatforms(platformsList string) ([]Platform, error) {
+	if platformsList == "" {
+		return nil, fmt.Errorf("non-empty '-platforms' argument must be provided")
 	}
-	return s[0], s[1]
+	platforms := []Platform{}
+	for _, entry := range strings.Split(platformsList, ",") {
+		// goos, goarch := splitOsArch(platform)
+		split := strings.SplitN(entry, "_", 2)
+		platform := Platform{
+			Os:   split[0],
+			Arch: "MISSING", // invalid, but we must handle bad OS & ARCH from user input anyway
+		}
+		if len(split) == 2 {
+			platform.Os = split[1]
+		}
+		platforms = append(platforms, platform)
+	}
+	return platforms, nil
 }
