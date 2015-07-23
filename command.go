@@ -115,9 +115,7 @@ func (cmd *Cmd) LogOnError() *Cmd {
 	return cmd
 }
 
-// OutputLines runs the command and returns trimmed stdout+stderr output split
-// into lines.
-func (cmd *Cmd) OutputLines() ([]string, error) {
+func (cmd *Cmd) CombinedOutput() ([]byte, error) {
 	if cmd.LogMode == LogAlways {
 		cmd.printCmdWithEnv()
 	}
@@ -129,6 +127,16 @@ func (cmd *Cmd) OutputLines() ([]string, error) {
 		if cmd.LogMode != LogNever {
 			stderr.Write(out)
 		}
+		return nil, err
+	}
+	return out, nil
+}
+
+// OutputLines runs the command and returns trimmed stdout+stderr output split
+// into lines.
+func (cmd *Cmd) OutputLines() ([]string, error) {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		return nil, err
 	}
 	out = bytes.TrimSpace(out)

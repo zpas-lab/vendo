@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"os"
 )
@@ -61,21 +62,32 @@ type VendorPackage struct {
 }
 
 func ReadVendorFile(path string) (*VendorFile, error) {
-	r, err := os.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &VendorFile{}, nil
 		}
 		return nil, err
 	}
-	defer r.Close()
+	defer f.Close()
+	return ParseVendorFile(f)
+}
 
-	data := VendorFile{}
-	err = json.NewDecoder(r).Decode(&data)
+func ReadStagedVendorFile(path string) (*VendorFile, error) {
+	data, err := git{}.ReadStaged(".", path)
 	if err != nil {
 		return nil, err
 	}
+	defer data.Close()
+	return ParseVendorFile(data)
+}
 
+func ParseVendorFile(r io.Reader) (*VendorFile, error) {
+	data := VendorFile{}
+	err := json.NewDecoder(r).Decode(&data)
+	if err != nil {
+		return nil, err
+	}
 	return &data, nil
 }
 

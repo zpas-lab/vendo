@@ -31,14 +31,17 @@ type Vcs interface {
 
 type git struct{}
 
+func (git) command(root string, args ...string) *Cmd {
+	return Command("git", "--git-dir", filepath.Join(root, ".git")).Append(args...)
+}
 func (git) Dir() string {
 	return ".git"
 }
 func (git) Clone(from, to string) error {
 	return Command("git", "clone", "--", from, to).DiscardOutput()
 }
-func (git) Revision(root string) (string, error) {
-	return Command("git", "--git-dir", filepath.Join(root, ".git"), "rev-parse", "HEAD").OutputOneLine()
+func (g git) Revision(root string) (string, error) {
+	return g.command(root, "rev-parse", "HEAD").OutputOneLine()
 }
 func (git) RevisionTime(root string) (string, error) {
 	// FIXME(mateuszc): verify that timeFormat is correct for %aD, or
@@ -46,26 +49,18 @@ func (git) RevisionTime(root string) (string, error) {
 	return vcsRevisionTime("Mon, 2 Jan 2006 15:04:05 -0700",
 		"git", "--git-dir", filepath.Join(root, ".git"), "log", "-1", "--pretty=format:%aD")
 }
-func (git) HeadSymbolicRef(root string) (string, error) {
-	line, err := Command("git", "--git-dir", filepath.Join(root, ".git"), "symbolic-ref", "-q", "--short", "HEAD").
+func (g git) HeadSymbolicRef(root string) (string, error) {
+	line, err := g.command(root, "symbolic-ref", "-q", "--short", "HEAD").
 		LogNever().
 		OutputOneLine()
 	if err == nil {
 		return line, nil
 	} else {
-		return Command("git", "--git-dir", filepath.Join(root, ".git"), "rev-parse", "HEAD").OutputOneLine()
+		return g.command(root, "rev-parse", "HEAD").OutputOneLine()
 	}
 }
-func (git) Checkout(root, revision string) error {
-	return Command("git", "--git-dir", filepath.Join(root, ".git"), "--work-tree", root, "checkout", revision).DiscardOutput()
-}
-func (git) IsClean(root, subpath string) (bool, error) {
-	lines, err := Command("git", "--git-dir", filepath.Join(root, ".git"), "--work-tree", root, "status", "--porcelain", subpath).
-		OutputLines()
-	if err != nil {
-		return false, err
-	}
-	return len(lines) == 0, nil
+func (g git) Checkout(root, revision string) error {
+	return g.command(root, "--work-tree", root, "checkout", revision).DiscardOutput()
 }
 
 type mercurial struct{}

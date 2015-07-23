@@ -184,12 +184,13 @@ Example directory structure of a project using the vendo tool, on user's local d
             3. `os.Walk("_vendor", func...)`, where func...:
                1. if path is a prefix of pkg in *vendor.json*, then return CONTINUE;
                2. if path not in *vendor.json*, then report **error**, return SKIP\_SUBTREE;
-               3. if has *.git/.hg/.bzr* subdir, then verify revision-id match with *vendor.json*; if failed, report **error**;
+               3. if has *.git/.hg/.bzr* subdir, then verify revision-id match with *vendor.json*; if failed, report **error** (see
+                  *vendo-check-patched* for error message details);
                4. mark pkg visited;
                5. return SKIP\_SUBTREE;
             4. if any pkg in *vendor.json* is not visited, then report **error**;
             5. **TODO:** check that any *.git/.hg/.bzr* subdirs, if present, are at locations noted in $PKG_REPO_ROOT fields;
-            5. `git stash pop -q`
+            6. `git stash pop -q`
          2. `vendo-check-dependencies`;
             1. `git stash -q --keep-index`; (or, work on files retrieved via git from index);
             2. iterate all \*.go files (except `_*` etc.), extract imports, and transitively their deps (same as in *vendo-add* - extract
@@ -227,8 +228,6 @@ Example directory structure of a project using the vendo tool, on user's local d
                           a) revert $PKG_REPO_ROOT to $PKG_REPO_REVISION;
                           b) update "revision" in 'vendor.json' to $PKG_LOCAL_REVISION;
                           c) delete $PKG_REPO_ROOT/.git   [TODO: or .hg or .bzr]
-                  * *[Note]* This error case is also detected by *vendo-check-consistency* - make sure both commands return the same error
-                    message.
                   * *[Note]* Possible (known) reasons for such situation:
                     * (a) user did `go get -u` without changing *vendor.json*;
                     * (b) user did a patch in the subrepo, then did `git commit` in the subrepo - that would be OK here, but on disk this

@@ -43,7 +43,3 @@ const (
 	VendorPath    = "_vendor"
 	GitignorePath = VendorPath + "/.gitignore"
 )
-
-func runCheck() error {
-	panic("NIY")
-}

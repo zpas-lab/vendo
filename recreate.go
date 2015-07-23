@@ -185,6 +185,7 @@ func forget() error {
 
 type set map[string]struct{}
 
+func (s set) Add(elem string) { s[elem] = struct{}{} }
 func (s set) ToSlice() []string {
 	keys := make([]string, 0, len(s))
 	for key := range s {
@@ -195,8 +196,9 @@ func (s set) ToSlice() []string {
 
 type Imports set
 
-// FIXME(mateuszc): why isn't ToSlice() "inherited" from type 'set'?
+// FIXME(mateuszc): why isn't ToSlice() & Add() "inherited" from type 'set'?
 func (imports Imports) ToSlice() []string { return set(imports).ToSlice() }
+func (imports Imports) Add(elem string)   { set(imports).Add(elem) }
 
 // findImportsGreedily analyzes all "*.go" files (except `_*`, `.*`, `testdata`) for imports, regardless of GOOS and build tags.
 // *[Note]* Just ignoring GOOS and GOARCH here is simpler than trying to parse & match them. As to build tags, we specifically want to
@@ -240,7 +242,7 @@ func findImportsGreedily(project string) (Imports, error) {
 				// TODO(mateuszc): we should do this again before cloning, to protect if some external pkg depends back on the project
 				continue
 			}
-			imports[imp] = struct{}{}
+			imports.Add(imp)
 		}
 		return nil
 	})
@@ -268,7 +270,7 @@ func (imports Imports) addTransitiveDependencies(gopath string, platforms []Plat
 		for _, imp := range deps {
 			// TODO(mateuszc): path.Clean()? e.g. for: import "foo//bar"
 			// FIXME(mateuszc): pkgs added here shouldn't "spill" to `go list` args for next platform
-			imports[imp] = struct{}{}
+			imports.Add(imp)
 		}
 	}
 	return nil
