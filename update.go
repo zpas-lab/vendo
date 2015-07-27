@@ -50,7 +50,7 @@ func Update(updatedImp string, platforms []Platform, force, deletePatch bool) er
 	if pkgs == nil {
 		return fmt.Errorf("file not found: %s", JsonPath)
 	}
-	updatedPkg := pkgs.MapCanonical()[updatedImp]
+	updatedPkg := pkgs.ByCanonical()[updatedImp]
 	switch {
 	case updatedPkg == nil:
 		return fmt.Errorf("import path %q not found in %s", updatedImp, JsonPath)

@@ -12,6 +12,9 @@ func runCheck() error {
 		return err
 	}
 	// FIXME(mateuszc): vendo-check-dependencies
-	// FIXME(mateuszc): vendo-check-patched
+	err = CheckPatched()
+	if err != nil {
+		return err
+	}
 	panic("NIY")
 }

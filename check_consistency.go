@@ -22,6 +22,8 @@ func CheckConsistency() error {
 	// NOTE: this function operates strictly on files in git's "staging area" (index).
 	// ANY MODIFICATIONS MUST KEEP THIS INVARIANT.
 
+	// TODO(mateuszc): check that all pkgs sharing same "repositoryRoot" have same "revision" & "revisionTime"
+
 	// Make sure we're in project's root dir (with .git/, vendor.json, and _vendor/)
 	exist := Exist{}.Dir(".git").File(JsonPath).Dir(VendorPath)
 	if exist.Err != nil {

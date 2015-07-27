@@ -26,7 +26,11 @@ type Vcs interface {
 	// checked out revision (e.g. branch or tag name). If not possible, it
 	// returns the same result as Revision.
 	HeadSymbolicRef(root string) (string, error)
-	Checkout(path, revision string) error
+	Checkout(root, revision string) error
+	// IsClean returns true when a repository has no changes and no untracked
+	// files in subpath (relative to repository root).  Ignored files are not
+	// taken into account.
+	IsClean(root, subpath string) (bool, error)
 }
 
 type git struct{}
@@ -62,6 +66,15 @@ func (g git) HeadSymbolicRef(root string) (string, error) {
 func (g git) Checkout(root, revision string) error {
 	return g.command(root, "--work-tree", root, "checkout", revision).DiscardOutput()
 }
+func (g git) IsClean(root, subpath string) (bool, error) {
+	// TODO(mateuszc): what if filepath.IsAbs(subpath)==true?
+	lines, err := g.command(root, "--work-tree", root, "status", "--porcelain", subpath).
+		OutputLines()
+	if err != nil {
+		return false, err
+	}
+	return len(lines) == 0, nil
+}
 
 type mercurial struct{}
 
@@ -85,6 +98,14 @@ func (mercurial) HeadSymbolicRef(root string) (string, error) {
 func (mercurial) Checkout(root, revision string) error {
 	// FIXME(mateuszc): make sure if we're ok to use -R or we should use --cwd
 	return Command("hg", "-R", root, "update", revision).DiscardOutput()
+}
+func (mercurial) IsClean(root, subpath string) (bool, error) {
+	lines, err := Command("hg", "-R", root, "status", filepath.Join(root, subpath)).
+		OutputLines()
+	if err != nil {
+		return false, err
+	}
+	return len(lines) == 0, nil
 }
 
 type bazaar struct{}
@@ -116,6 +137,27 @@ func (bazaar) HeadSymbolicRef(root string) (string, error) {
 func (bazaar) Checkout(root, revision string) error {
 	return Command("bzr", "update", "-r", "revid:"+revision, root).DiscardOutput()
 }
+func (bazaar) IsClean(root, subpath string) (bool, error) {
+	// TODO(mateuszc): test this
+	path := filepath.Join(root, subpath)
+	cmds := []*Cmd{
+		Command("bzr", "modified"),
+		Command("bzr", "deleted"),
+		Command("bzr", "added"),
+		Command("bzr", "ls", "--unknown"),
+	}
+	for _, cmd := range cmds {
+		cmd.Append("-d", path)
+		lines, err := cmd.OutputLines()
+		if err != nil {
+			return false, err
+		}
+		if len(lines) > 0 {
+			return false, nil
+		}
+	}
+	return true, nil
+}
 
 func vcsRevisionTime(timeFormat, command string, args ...string) (string, error) {
 	line, err := Command(command, args...).OutputOneLine()
@@ -137,19 +179,16 @@ func vcsRevisionTime(timeFormat, command string, args ...string) (string, error)
 // tree than allowed by the path.
 func (l VcsList) FindRoot(path string) (string, Vcs, error) {
 	// Go up directory tree, until we find a subdir correct for one of the Vcs
+	// TODO(mateuszc): possible optimization: try calling each vcs only once to
+	// report its root, if possible (e.g. for git: `git rev-parse
+	// --show-toplevel`), then return the longest (?)
 	for {
-		for _, vcs := range l {
-			maybe := filepath.Join(path, vcs.Dir())
-			stat, err := os.Stat(maybe)
-			switch {
-			case os.IsNotExist(err):
-				continue
-			case err != nil:
-				return "", nil, err
-			case stat.IsDir():
-				// FIXME(mateuszc): try refactoring to save path (repo root) in the Vcs struct
-				return path, vcs, nil
-			}
+		vcs, err := l.IsRoot(path)
+		if err != nil {
+			return "", nil, err
+		}
+		if vcs != nil {
+			return path, vcs, nil
 		}
 
 		parent := filepath.Dir(path)
@@ -159,4 +198,21 @@ func (l VcsList) FindRoot(path string) (string, Vcs, error) {
 		path = parent
 	}
 	return "", nil, nil
+}
+
+func (l VcsList) IsRoot(path string) (Vcs, error) {
+	for _, vcs := range l {
+		maybe := filepath.Join(path, vcs.Dir())
+		stat, err := os.Stat(maybe)
+		switch {
+		case os.IsNotExist(err):
+			continue
+		case err != nil:
+			return nil, err
+		case stat.IsDir():
+			// FIXME(mateuszc): try refactoring to save path (repo root) in the Vcs struct
+			return vcs, nil
+		}
+	}
+	return nil, nil
 }

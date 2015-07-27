@@ -131,7 +131,7 @@ func Recreate(platforms []Platform, clone bool) error {
 			vendorAbsPath, missing)
 	}
 
-	pkgsNew, err := imports.buildVendorFile(pkgs.MapCanonical())
+	pkgsNew, err := imports.buildVendorFile(pkgs.ByCanonical())
 	if err != nil {
 		return err
 	}
@@ -534,7 +534,7 @@ func parsePlatforms(platformsList string) ([]Platform, error) {
 			Arch: "MISSING", // invalid, but we must handle bad OS & ARCH from user input anyway
 		}
 		if len(split) == 2 {
-			platform.Os = split[1]
+			platform.Arch = split[1]
 		}
 		platforms = append(platforms, platform)
 	}

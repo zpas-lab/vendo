@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 )
 
 // Based on:
@@ -76,6 +77,21 @@ func ReadVendorFile(path string) (*VendorFile, error) {
 func ReadStagedVendorFile(path string) (*VendorFile, error) {
 	data, err := git{}.ReadStaged(".", path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return &VendorFile{}, nil
+		}
+		return nil, err
+	}
+	defer data.Close()
+	return ParseVendorFile(data)
+}
+
+func ReadHeadVendorFile(path string) (*VendorFile, error) {
+	data, err := git{}.ReadHead(".", path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &VendorFile{}, nil
+		}
 		return nil, err
 	}
 	defer data.Close()
@@ -104,13 +120,44 @@ func (v *VendorFile) WriteTo(path string) error {
 	}
 	return nil
 }
-func (v *VendorFile) MapCanonical() map[string]*VendorPackage {
+
+func (v *VendorFile) ByCanonical() map[string]*VendorPackage {
 	m := map[string]*VendorPackage{}
 	for _, pkg := range v.Packages {
 		// FIXME(mateuszc): resolve somehow situation when identical .Canonical fields are repeated
 		m[pkg.Canonical] = pkg
 	}
 	return m
+}
+func (v *VendorFile) ByRepositoryRoot() map[string]*VendorPackage {
+	m := map[string]*VendorPackage{}
+	for _, pkg := range v.Packages {
+		// FIXME(mateuszc): resolve somehow situation when identical .RepositoryRoot fields are repeated
+		m[pkg.RepositoryRoot] = pkg
+	}
+	return m
+}
+
+// NOTE(mateuszc): files and v's "repositoryRoot"s must be relative, slash-only
+// paths
+func (v *VendorFile) findReposOfFiles(files []string) (set, []string) {
+	result := set{}
+	unknown := []string{}
+	repos := v.ByRepositoryRoot()
+nextFile:
+	for _, file := range files {
+		dir := file
+		for dir != "." {
+			dir = path.Dir(dir)
+			_, found := repos[dir]
+			if found {
+				result.Add(dir)
+				continue nextFile
+			}
+		}
+		unknown = append(unknown, file)
+	}
+	return result, unknown
 }
 
 type PackagesOrder []*VendorPackage

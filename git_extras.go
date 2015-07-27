@@ -2,24 +2,61 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// IsClean returns true when a repository has no changes and no untracked files
-// in subpath (relative to repository root).  Ignored files are not taken into
-// account.
-func (g git) IsClean(root, subpath string) (bool, error) {
-	lines, err := Command("git", "--git-dir", filepath.Join(root, ".git"), "--work-tree", root, "status", "--porcelain", subpath).
-		OutputLines()
-	if err != nil {
-		return false, err
+func (git) parseFilename(line string) (filename, rest string, err error) {
+	// FIXME(mateuszc): use this function in other places where parsing file names from git output
+	// Should parse any of:
+	//
+	//	foo
+	//	"b\305\272dzi\304\205gwa"
+	//	->
+	//	"with\nnewline"
+	//	"g\305\274e\ng\305\274\303\263\305\202ka"
+
+	if len(line) == 0 {
+		return "", "", errors.New("cannot parse empty string as filename in git output")
 	}
-	return len(lines) == 0, nil
+
+	if line[0] != '"' {
+		pos := strings.Index(line, " ")
+		if pos == -1 {
+			return line, "", nil
+		}
+		// TODO(mateuszc): if pos==0 { return error }
+		return line[:pos], line[pos:], nil
+	}
+
+	pending := line[1:]
+	bytes := []byte{}
+	for {
+		if len(pending) == 0 {
+			return "", "", fmt.Errorf("cannot parse filename in git output: %s", line)
+		}
+		if pending[0] == '"' {
+			// Closing quote.
+			return string(bytes), pending[1:], nil
+		}
+		// Below function properly decodes escape sequences like: \" \123 \n
+		c, _, tail, err := strconv.UnquoteChar(pending, '"')
+		if err != nil {
+			return "", "", fmt.Errorf("cannot parse filename in git output (%s): %s", err, line)
+		}
+		// NOTE(mateuszc): git outputs UTF-8 as escaped bytes, e.g.: ą will be
+		// printed as "\304\205". UnquoteChar will capture each as separate
+		// "rune", because it expects Go-like string, where multibytes are not
+		// escaped. So we must treat 'c' as byte, not as rune.
+		bytes = append(bytes, byte(c))
+		pending = tail
+	}
 }
 
 // Note: this function is very primitive and limited. Both paths must be
@@ -95,14 +132,27 @@ func (g gitWalkInfo) Mode() os.FileMode  { return 0 } // FIXME(mateuszc): keep .
 func (g gitWalkInfo) Size() int64        { return 0 }
 func (g gitWalkInfo) Sys() interface{}   { return nil }
 
-func (g git) ReadStaged(root, subpath string) (io.ReadCloser, error) {
+func (g git) show(root, object string) (io.ReadCloser, error) {
 	// TODO(mateuszc): optimization: use streamed os/exec.Cmd.StdoutPipe()
-	data, err := g.command(root, "show", ":"+subpath).
+	data, err := g.command(root, "show", object).
+		LogNever().
 		CombinedOutput()
 	if err != nil {
-		return nil, err
+		// TODO(mateuszc): is there a way we can more robustly detect it's really a missing file?
+		return nil, &os.PathError{
+			Op:   "git show",
+			Path: object,
+			Err:  os.ErrNotExist,
+		}
 	}
 	return nopCloser{bytes.NewReader(data)}, nil
+}
+
+func (g git) ReadStaged(root, subpath string) (io.ReadCloser, error) {
+	return g.show(root, ":"+subpath)
+}
+func (g git) ReadHead(root, subpath string) (io.ReadCloser, error) {
+	return g.show(root, "HEAD:"+subpath)
 }
 
 type nopCloser struct{ io.Reader }
