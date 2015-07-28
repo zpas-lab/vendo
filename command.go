@@ -13,6 +13,9 @@ import (
 // stderr can be changed in tests to capture output of Cmd's methods.
 var stderr io.Writer = os.Stderr
 
+// Verbose can be used to make all Cmds run with forced LogAlways.
+var Verbose = false
+
 // NewEnviron returns a clone of the original array of KEY=VALUE entries, with
 // entries from the patch array merged (overriding existing KEYs).
 //
@@ -116,7 +119,7 @@ func (cmd *Cmd) LogOnError() *Cmd {
 }
 
 func (cmd *Cmd) CombinedOutput() ([]byte, error) {
-	if cmd.LogMode == LogAlways {
+	if cmd.LogMode == LogAlways || Verbose {
 		cmd.printCmdWithEnv()
 	}
 	out, err := cmd.Cmd.CombinedOutput()
@@ -124,7 +127,7 @@ func (cmd *Cmd) CombinedOutput() ([]byte, error) {
 		if cmd.LogMode == LogOnError {
 			cmd.printCmdWithEnv()
 		}
-		if cmd.LogMode != LogNever {
+		if cmd.LogMode != LogNever || Verbose {
 			stderr.Write(out)
 		}
 		return nil, err

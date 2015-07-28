@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 )
@@ -27,13 +28,20 @@ var cmds = map[string]func() error{
 }
 
 func run() error {
-	if len(os.Args) <= 1 {
+	// FIXME(mateuszc): make -v work also for any places where we use raw exec.Command
+	verbose := flag.Bool("v", false, "show all executed commands")
+	flag.Parse()
+
+	if *verbose {
+		Verbose = true
+	}
+	if flag.NArg() < 1 {
 		return usage()
 	}
-	cmd := cmds[os.Args[1]]
+	cmd := cmds[flag.Arg(0)]
 	if cmd == nil {
 		usage()
-		return fmt.Errorf("unknown command: %s", os.Args[1])
+		return fmt.Errorf("unknown command: %s", flag.Arg(0))
 	}
 	return cmd()
 }
