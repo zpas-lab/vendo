@@ -12,6 +12,82 @@ import (
 	"time"
 )
 
+type GitStasher struct {
+	stashCreated bool
+}
+
+// GitStashUnstaged hides from disk all unstaged changes (but doesn't touch
+// untracked files). After the call, files on disk with mirror contents of the
+// git index (staging area), plus any untracked files.
+//
+// BUG(mateuszc): As of git 2.1.0 (default in Ubuntu 14.04), when a file is
+// added to git index and then deleted from disk, `git stash save --keep-index`
+// + `git stash pop` recreates it on disk (`touch foobar && git add foobar &&
+// rm foobar && git stash save --keep-index && git stash pop` -- file foobar
+// exists on disk, although it shouldn't).
+func GitStashUnstaged(comment string) (*GitStasher, error) {
+	// NOTE(mateuszc): If no files are modified, `git stash save --keep-index`
+	// exits successfully, but doesn't make a new stash, instead printing
+	// "No local changes to save". Doing `git stash pop` later would be a bug.
+	//
+	// A workaround we employ is to capture the output of git stash, and detect
+	// that either a stash is created (should have the 'comment' on first line
+	// then), or the "No local changes to save" message is shown. This is ugly,
+	// as it depends on messages from git which may change, but alternatives are
+	// expensive. At least we try to protect against changed format of messages
+	// or translated messages, by returning an error if we can't match the
+	// message.
+	//
+	// Alternatives considered:
+	// a) in GitUnstash, we could first check if the top stash has appropriate
+	//    "comment" matching the one used in `git stash save`;
+	//    * (-) someone could have created a stash with this name earlier;
+	// b) we need `git stash save` only because of `go list` in
+	//    vendo-check-dependencies; we could instead use package go/build and
+	//    implement Context.OpenFile etc. to read from git index (staging area);
+	//    * (-) much work and will be complex and hard to understand;
+	//    * can use `git` commands to implement the funcs;
+	//    * could use third-party Go git libraries, but the pure-Go ones I found
+	//      don't seem to support index (staging area) handling :/
+	//      * could implement it, but too much work:
+	//        http://stackoverflow.com/q/4084921
+	//      * http://godoc.org/github.com/speedata/gogit
+	//      * http://godoc.org/github.com/gogits/git
+	//      * [git2go - cgo wrapper for
+	//        libgit2](https://godoc.org/github.com/libgit2/git2go)
+	// c) don't call `git stash` at all; operate on working dir contents;
+	//    * (-) this makes most of vendo-check-... non-robust;
+	//    * (+) fast to implement;
+	cmd := Command("git", "stash", "save", "--keep-index", comment)
+	lines, err := cmd.
+		LogAlways().
+		OutputLines()
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case len(lines) > 0 && strings.HasSuffix(lines[0], ": "+comment):
+		return &GitStasher{stashCreated: true}, nil
+	case len(lines) == 1 && lines[0] == "No local changes to save":
+		return &GitStasher{stashCreated: false}, nil
+	}
+	return nil, fmt.Errorf("GitStashUnstaged cannot parse output of `%s`:\n%s",
+		strings.Join(cmd.Cmd.Args, " "),
+		strings.Join(lines, "\n"))
+}
+
+func (g *GitStasher) Unstash() {
+	if !g.stashCreated {
+		return
+	}
+	err := Command("git", "stash", "pop", "--quiet").
+		LogAlways().
+		DiscardOutput()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "vendo: INTERNAL ERROR: cannot undo git stash save! Unstaged modifications may be lost, sorry :(\n")
+	}
+}
+
 func (git) parseFilename(line string) (filename, rest string, err error) {
 	// FIXME(mateuszc): use this function in other places where parsing file names from git output
 	// Should parse any of:

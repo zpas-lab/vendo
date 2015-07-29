@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 )
@@ -27,20 +26,17 @@ func CheckPatched() error {
 	// We want the "current on-disk" state of files to reflect the content of git's "staging area" ("index").  Because
 	// that's what will be added in the subsequent git commit. And we want the vcs.IsClean() in subrepos to see that
 	// content.
-	err := Command("git", "stash", "save", "--quiet", "--keep-index", "vendo check-patched").
-		LogAlways().
-		DiscardOutput()
+	stasher, err := GitStashUnstaged("vendo check-patched")
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err := Command("git", "stash", "pop", "--quiet").
-			LogAlways().
-			DiscardOutput()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "vendo: INTERNAL ERROR: cannot undo git stash save! Unstaged modifications may be lost, sorry :(")
-		}
-	}()
+	defer stasher.Unstash()
+
+	// Check again after `git stash`
+	exist = Exist{}.Dir(".git").File(JsonPath).Dir(VendorPath)
+	if exist.Err != nil {
+		return exist.Err
+	}
 
 	dirtyFiles, err := findDirtyStagedFiles()
 	if err != nil {
