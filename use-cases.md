@@ -138,7 +138,7 @@ Example directory structure of a project using the vendo tool, on user's local d
    2. *[Note]* The repo may be patched internally to fix a bug; it'd be desirable that this is detected and the update stopped;
    3. *[Note]* This will require updating all pkgs which have the same repo;
    4. **IMPLEMENTATION**:
-      1. `vendo-update -platforms=linux_amd64,darwin_amd64[,...] PKG`;
+      1. `vendo-update [-platforms=linux_amd64,darwin_amd64[,...]] PKG`;
          1. `rm _vendor/.gitignore`; (required for a `vendo-recreate` step below and for `git status` calls);
          2. if `git status _vendor/$PKG_REPO_ROOT` shows diff, then **error** (unless `-f`|`--force` option provided);
             * *[Note]* We don't have to check `cd _vendor/$PKG_REPO_ROOT ; git/hg/bzr status`. If the files are "unmodified" from
@@ -164,8 +164,8 @@ Example directory structure of a project using the vendo tool, on user's local d
              * *[Note]* We can't just `git checkout master`, because e.g. if tag 'go1' is present in repo, it is chosen by `go get` instead
                of 'master'.
          9. `vendo-recreate`;
-             * *[Note]* Value of argument `-platforms` for *vendo-add* should be copied verbatim from mandatory argument `-platforms` of
-               *vendo-update*;
+             * *[Note]* Value of argument `-platforms` for *vendo-add* should be copied verbatim from argument `-platforms` of
+               *vendo-update*, or read from *vendor.json* custom global field "platforms" otherwise;
              * *[Note]* This will update revision-id & revision-date for $PKG in *vendor.json*;
              * *[Note]* This will also add any new pkgs downloaded because they're dependencies of $PKG;
 6. User does normal coding in the main project. User wants to change the code of the main repo, adding and removing some imports, then build
@@ -177,7 +177,7 @@ Example directory structure of a project using the vendo tool, on user's local d
          1. analyze all `*.go` files changed by the commit (except `_*` etc.), including those in *_vendor* subdir; if they add any imports
             from outside main repo, which are not yet in *vendor.json*, then report **error** with appropriate message (list of pkgs and
             suggestion to call *vendo-add*);
-      2. **IMPLEMENTTION; VARIANT-B** (slower, but will detect removed repos):
+      2. **IMPLEMENTATION; VARIANT-B** (slower, but will detect removed repos):
          1. `vendo-check-consistency`;
             1. `git stash -q --keep-index`;
             2. parse *vendor.json*, sort by pkg path;

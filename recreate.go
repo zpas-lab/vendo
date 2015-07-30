@@ -31,10 +31,17 @@ func runRecreate() error {
 	)
 
 	flags.Parse(os.Args[2:])
+	if *platformsList == "" {
+		// FIXME(mateuszc): if empty, read Platforms from vendor.json; then if empty, return error (similar as in 'update' subcmd)
+		return fmt.Errorf("non-empty '-platforms' argument must be provided")
+	}
 	platforms, err := parsePlatforms(*platformsList)
 	if err != nil {
 		// TODO(mateuszc): subcmd usage
 		return err
+	}
+	if len(platforms) == 0 {
+		return fmt.Errorf("non-empty '-platforms' argument must be provided")
 	}
 
 	return Recreate(platforms, *clone)
@@ -135,6 +142,7 @@ func Recreate(platforms []Platform, clone bool) error {
 		return err
 	}
 	pkgsNew.Comment = pkgs.Comment
+	pkgsNew.Platforms = platforms
 
 	err = gitAddPackages(pkgsNew.Packages)
 	if err != nil {
@@ -258,6 +266,9 @@ func findImportsGreedily(excludePrefix string) (Imports, error) {
 // we merge result from every GOOS & GOARCH combination (as listed in `-platforms` **mandatory** argument).
 // (use-cases.md 1.5.2.2)
 func (imports Imports) addTransitiveDependencies(gopath string, platforms []Platform) error {
+	if len(platforms) == 0 {
+		panic(`empty list of platforms in addTransitiveDependencies`)
+	}
 	for _, platform := range platforms {
 		// Add all transitive dependencies reported by 'go list'.
 		deps, err := GoList("{{range .Deps}}{{. | println}}{{end}}", imports.ToSlice()...).
@@ -520,12 +531,7 @@ func hasImportPrefix(imp, prefix string) bool {
 	return imp == prefix || strings.HasPrefix(imp, prefix+"/")
 }
 
-type Platform struct{ Os, Arch string }
-
 func parsePlatforms(platformsList string) ([]Platform, error) {
-	if platformsList == "" {
-		return nil, fmt.Errorf("non-empty '-platforms' argument must be provided")
-	}
 	platforms := []Platform{}
 	for _, entry := range strings.Split(platformsList, ",") {
 		// goos, goarch := splitOsArch(platform)

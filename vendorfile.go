@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 )
 
 // Based on:
@@ -16,6 +18,12 @@ import (
 type VendorFile struct {
 	// FIXME(mateuszc): add comment
 	Tool string `json:"tool"`
+
+	// Platforms is a list of GOOS & GOARCH pairs which were used when crawling
+	// import dependencies to build the list of packages.
+	//
+	// Platforms is a custom field, specific to the "vendo" tool.
+	Platforms []Platform `json:"platforms,omitempty"`
 
 	// Comment is free text for human use. Example "Revision abc123 introduced
 	// changes that are not backwards compatible, so leave this as def876."
@@ -56,10 +64,32 @@ type VendorPackage struct {
 	// directories here (.git, .hg, etc.)
 	// Examples: "vendor/rsc.io/pdf".
 	//
-	// RepositoryRoot is custom field (specific for "vendo" tool). It must
+	// RepositoryRoot is custom field, specific for "vendo" tool. It must
 	// always use forward slashes and must not contain the path elements "."
 	// or "..".
 	RepositoryRoot string `json:"repositoryRoot"`
+}
+
+type Platform struct {
+	Os   string `json:"os"`
+	Arch string `json:"arch"`
+}
+
+func (p Platform) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.Os + "_" + p.Arch)
+}
+func (p *Platform) UnmarshalJSON(data []byte) error {
+	s := ""
+	err := json.Unmarshal(data, &s)
+	if err != nil {
+		return err
+	}
+	split := strings.Split(s, "_")
+	if len(split) != 2 {
+		return fmt.Errorf("platform code must have exactly one '_' char in: %s", s)
+	}
+	p.Os, p.Arch = split[0], split[1]
+	return nil
 }
 
 func ReadVendorFile(path string) (*VendorFile, error) {

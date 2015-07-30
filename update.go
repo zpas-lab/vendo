@@ -44,12 +44,18 @@ func Update(updatedImp string, platforms []Platform, force, deletePatch bool) er
 	}
 
 	pkgs, err := ReadVendorFile(JsonPath)
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
-	}
-	if pkgs == nil {
+	case pkgs == nil:
 		return fmt.Errorf("file not found: %s", JsonPath)
+	case len(platforms) == 0:
+		platforms = pkgs.Platforms
+		if len(platforms) == 0 {
+			return fmt.Errorf(`empty list of platforms (you must set flag "-platforms" or %s field "platforms")`, JsonPath)
+		}
 	}
+
 	updatedPkg := pkgs.ByCanonical()[updatedImp]
 	switch {
 	case updatedPkg == nil:
@@ -115,8 +121,8 @@ func Update(updatedImp string, platforms []Platform, force, deletePatch bool) er
 	}
 
 	// `vendo-recreate`;
-	//  * *[Note]* Value of argument `-platforms` for *vendo-add* should be copied verbatim from mandatory argument `-platforms` of
-	//    *vendo-update*;
+	//  * *[Note]* Value of argument `-platforms` for *vendo-add* should be copied verbatim from argument `-platforms` of
+	//    *vendo-update*, or read from *vendor.json* custom global field "platforms" otherwise;
 	//  * *[Note]* This will update revision-id & revision-date for $PKG in *vendor.json*;
 	//  * *[Note]* This will also add any new pkgs downloaded because they're dependencies of $PKG;
 	// (use-cases.md 5.4.1.9)
