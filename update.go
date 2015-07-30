@@ -89,11 +89,10 @@ func Update(updatedImp string, platforms []Platform, force, deletePatch bool) er
 		return err
 	}
 
-	cwd, err := os.Getwd()
+	vendorAbsPath, err := getVendorAbsPath()
 	if err != nil {
 		return err
 	}
-	vendorAbsPath := filepath.Join(cwd, VendorPath)
 
 	// Update the requested repository from the Internet, via `go get`.
 	// FIXME(mateuszc): probably must run `go get -u` for each platform, to make sure all deps are fetched

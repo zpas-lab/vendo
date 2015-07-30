@@ -67,24 +67,23 @@ func Recreate(platforms []Platform, clone bool) error {
 
 	os.MkdirAll(VendorPath, 0755) // Note: must be done before os.Stat(VendorPath)
 
-	// Retrieve the main project's import path
-	project, err := GoList("{{.ImportPath}}", ".").WithFailed().OutputOneLine()
+	// Find project's imports, excluding its own subpackages.
+	// TODO(mateuszc): we should remove in-project packages again before cloning, to protect if some external pkg depends back on the project
+	project, err := findProjectImportPath()
 	if err != nil {
 		return err
 	}
-
 	imports, err := findImportsGreedily(project)
 	if err != nil {
 		return err
 	}
 
 	// Prepare new Environ with: GOPATH=$PWD/_vendor:$GOPATH
-	cwd, err := os.Getwd()
+	vendorAbsPath, err := getVendorAbsPath()
 	if err != nil {
 		return err
 	}
 	// TODO(mateuszc): error if GOPATH is empty
-	vendorAbsPath := filepath.Join(cwd, VendorPath)
 	gopath := vendorAbsPath + string(filepath.ListSeparator) + os.Getenv("GOPATH")
 
 	err = imports.addTransitiveDependencies(gopath, platforms)
@@ -92,7 +91,7 @@ func Recreate(platforms []Platform, clone bool) error {
 		return err
 	}
 
-	err = imports.removeStdlibs(gopath)
+	err = imports.removeStdlibs()
 	if err != nil {
 		return err
 	}
@@ -183,6 +182,12 @@ func forget() error {
 	return nil
 }
 
+func findProjectImportPath() (string, error) {
+	return GoList("{{.ImportPath}}", ".").
+		WithFailed().
+		OutputOneLine()
+}
+
 type set map[string]struct{}
 
 func (s set) Add(elem string) { s[elem] = struct{}{} }
@@ -203,8 +208,9 @@ func (imports Imports) Add(elem string)   { set(imports).Add(elem) }
 // findImportsGreedily analyzes all "*.go" files (except `_*`, `.*`, `testdata`) for imports, regardless of GOOS and build tags.
 // *[Note]* Just ignoring GOOS and GOARCH here is simpler than trying to parse & match them. As to build tags, we specifically want to
 // cover all combinations of them, as we want to make sure *all ever* dependencies of our main project are found.
+// Imports starting with excludePrefix are skipped.
 // (use-cases.md 1.5.2.1)
-func findImportsGreedily(project string) (Imports, error) {
+func findImportsGreedily(excludePrefix string) (Imports, error) {
 	fset := token.NewFileSet()
 	imports := Imports{}
 	err := filepath.Walk(".", func(path string, info os.FileInfo, extError error) error {
@@ -236,10 +242,7 @@ func findImportsGreedily(project string) (Imports, error) {
 				continue
 			}
 			imp := strings.Trim(quotedImp.Path.Value, `"`)
-			if hasImportPrefix(imp, project) {
-				// Ignore in-project packages. We've already crawled all in-project pkgs for immediate dependencies, so
-				// we can now work only on what's outside.
-				// TODO(mateuszc): we should do this again before cloning, to protect if some external pkg depends back on the project
+			if hasImportPrefix(imp, excludePrefix) {
 				continue
 			}
 			imports.Add(imp)
@@ -278,11 +281,9 @@ func (imports Imports) addTransitiveDependencies(gopath string, platforms []Plat
 
 // removeStdlibs removes standard library packages from the list.
 // go list -e -f '{{if .Standard}}{{.ImportPath}}{{end}}' pkg1 pkg2 ...
-func (imports Imports) removeStdlibs(gopath string) error {
+func (imports Imports) removeStdlibs() error {
 	stdlibs, err := GoList("{{if .Standard}}{{.ImportPath}}{{end}}", imports.ToSlice()...).
 		WithFailed().
-		Setenv(
-		"GOPATH=" + gopath).
 		OutputLines()
 	if err != nil {
 		return err

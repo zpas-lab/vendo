@@ -45,9 +45,3 @@ func run() error {
 	}
 	return cmd()
 }
-
-const (
-	JsonPath      = "vendor.json"
-	VendorPath    = "_vendor"
-	GitignorePath = VendorPath + "/.gitignore"
-)
