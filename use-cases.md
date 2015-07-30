@@ -178,7 +178,8 @@ Example directory structure of a project using the vendo tool, on user's local d
             from outside main repo, which are not yet in *vendor.json*, then report **error** with appropriate message (list of pkgs and
             suggestion to call *vendo-add*);
       2. **IMPLEMENTATION; VARIANT-B** (slower, but will detect removed repos):
-         1. `vendo-check-consistency`;
+         1. `vendo-check-consistency` -- this checks that all repository roots listed in *vendor.json* exist as subdirs in the committed
+            *_vendor* subdir, and that there are no other subdirs;
             1. `git stash -q --keep-index`;
             2. parse *vendor.json*, sort by pkg path;
             3. `os.Walk("_vendor", func...)`, where func...:
@@ -191,13 +192,16 @@ Example directory structure of a project using the vendo tool, on user's local d
             4. if any pkg in *vendor.json* is not visited, then report **error**;
             5. **TODO:** check that any *.git/.hg/.bzr* subdirs, if present, are at locations noted in $PKG_REPO_ROOT fields;
             6. `git stash pop -q`
-         2. `vendo-check-dependencies`;
+         2. `vendo-check-dependencies` -- this checks that all packages imported by project are listed in the *vendor.json* file, and no
+            others;
             1. `git stash -q --keep-index`; (or, work on files retrieved via git from index);
             2. iterate all \*.go files (except `_*` etc.), extract imports, and transitively their deps (same as in *vendo-add* - extract
                common code);
             3. delete from the list all pkgs in "core main repo" - i.e. those in main repo, but not in *_vendor*;
             4. verify that the list is *exactly* equal to contents of *vendor.json*; if not equal, report **error**;
             5. `git stash pop -q`;
+         3. **TODO:** add a `vendo-check-json` step before 1. - it should verify internal consistency of *vendor.json* (pkg paths <->
+            repository roots; same revision if same repositoryRoot; same revisionTime if same repositoryRoot);
    2. A tool must be available to auto-update (add & remove) packages in *_vendor* dir to satisfy the above *pre-commit* check; (still, we
       don't want to put the auto-update tool in *pre-commit* hook - we want user to run it explicitly, similar as with a *go fmt* hook);
    3. **IMPLEMENTATION**:

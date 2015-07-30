@@ -7,8 +7,10 @@ import (
 	"strings"
 )
 
+// CheckPatched checks that all packages imported by project are listed in the
+// *vendor.json* file, and no others.
+// (use-cases.md 7.1.1)
 func CheckPatched() error {
-	// (use-cases.md 7.1.1)
 
 	// NOTE: this function operates strictly on files in git's "staging area" (index).
 	// ANY MODIFICATIONS MUST KEEP THIS INVARIANT.

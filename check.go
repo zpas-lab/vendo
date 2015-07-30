@@ -11,10 +11,13 @@ func runCheck() error {
 	if err != nil {
 		return err
 	}
-	// FIXME(mateuszc): vendo-check-dependencies
+	err = CheckDependencies()
+	if err != nil {
+		return err
+	}
 	err = CheckPatched()
 	if err != nil {
 		return err
 	}
-	panic("NIY")
+	return nil
 }
