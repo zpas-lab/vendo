@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -9,9 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-func runRecreate() error {
+func init() {
 	// Use case "vendo-recreate"
 	// (use-cases.md 1.)
 	//
@@ -24,27 +25,39 @@ func runRecreate() error {
 	//     ignored pkg separately, because they may differ per user);
 	//  3. A warning/error should be printed if some dependencies cannot be found in *_vendor* or GOPATH; (user must download them explicitly);
 	//  4. *[Note]* Some pkgs may already be present in *_vendor*;
-	flags := flag.NewFlagSet("recreate", flag.ExitOnError)
+	cmd := &cobra.Command{
+		Use: "recreate",
+		Short: fmt.Sprintf("clone third-party packages from GOPATH to %s/ subdirectory",
+			VendorPath),
+		Long: fmt.Sprintf(
+			`Recreate analyzes *.go source files in current git repository, and
+transitively discovers imported packages.  If necessary, the packages are cloned
+from GOPATH to the %s/ directory, and appropriate entries are added to the %s
+file.  Finally, the results are added to staging area of the current repository,
+ready for commit.`,
+			VendorPath, JsonPath),
+	}
 	var (
-		platformsList = flags.String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
-		clone         = flags.Bool("clone", true, "if dependency doesn't exist in _vendor/, clone it from GOPATH")
+		platformsList = cmd.Flags().String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
+		clone         = cmd.Flags().Bool("clone", true, "if dependency doesn't exist in _vendor/, clone it from GOPATH")
 	)
+	cmd.Run = wrapRun(func(cmd *cobra.Command, args []string) error {
+		if *platformsList == "" {
+			// FIXME(mateuszc): if empty, read Platforms from vendor.json; then if empty, return error (similar as in 'update' subcmd)
+			return fmt.Errorf("non-empty '--platforms' argument must be provided")
+		}
+		platforms, err := parsePlatforms(*platformsList)
+		if err != nil {
+			// TODO(mateuszc): subcmd usage
+			return err
+		}
+		if len(platforms) == 0 {
+			return fmt.Errorf("non-empty '--platforms' argument must be provided")
+		}
 
-	flags.Parse(os.Args[2:])
-	if *platformsList == "" {
-		// FIXME(mateuszc): if empty, read Platforms from vendor.json; then if empty, return error (similar as in 'update' subcmd)
-		return fmt.Errorf("non-empty '-platforms' argument must be provided")
-	}
-	platforms, err := parsePlatforms(*platformsList)
-	if err != nil {
-		// TODO(mateuszc): subcmd usage
-		return err
-	}
-	if len(platforms) == 0 {
-		return fmt.Errorf("non-empty '-platforms' argument must be provided")
-	}
-
-	return Recreate(platforms, *clone)
+		return Recreate(platforms, *clone)
+	})
+	cmds.AddCommand(cmd)
 }
 
 func Recreate(platforms []Platform, clone bool) error {

@@ -1,39 +1,47 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
 )
 
-func runUpdate() error {
+func init() {
 	// Use case "vendo-update"
 	//
 	// User wants to update a third-party repo in *_vendor* from the Internet (i.e. `go get -u`);
 	//  1. *[Note]* The repo may or may not have a *.git/.hg/.bzr* subdir; (no subdir e.g. when it was added by another user and pulled);
 	//  2. *[Note]* The repo may be patched internally to fix a bug; it'd be desirable that this is detected and the update stopped;
 	//  3. *[Note]* This will require updating all pkgs which have the same repo;
-	flags := flag.NewFlagSet("update", flag.ExitOnError)
+	cmd := &cobra.Command{
+		Use: "update", // FIXME(mateuszc): how to add info about IMPORT_PATH mandatory argument?
+		Short: fmt.Sprintf("update a third-party repo in %s/ from the Internet (like `go get -u`)",
+			VendorPath),
+		Example: "  vendo update rsc.io/pdf",
+		Long:    "Update calls `go get -u` on a specified vendored package,\nin order to download its newer version from the Internet.",
+	}
 	var (
-		force         = flags.Bool("f", false, "force package update even if it's not clean")
-		deletePatch   = flags.Bool("delete-patch", false, "ignore local patches in the updated repository")
-		platformsList = flags.String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
+		force         = cmd.Flags().Bool("f", false, "force package update even if it's not clean")
+		deletePatch   = cmd.Flags().Bool("delete-patch", false, "ignore local patches in the updated repository")
+		platformsList = cmd.Flags().String("platforms", "", "format: OS_ARCH,OS_ARCH2[,...]")
 	)
+	cmd.Run = wrapRun(func(cmd *cobra.Command, args []string) error {
+		if len(args) != 1 {
+			// TODO(mateuszc): subcmd usage
+			return fmt.Errorf("subcommand 'update' requires argument specifying package import path")
+		}
+		updatedImp := args[0]
+		platforms, err := parsePlatforms(*platformsList)
+		if err != nil {
+			// TODO(mateuszc): subcmd usage
+			return err
+		}
 
-	flags.Parse(os.Args[2:])
-	if flags.NArg() != 1 {
-		// TODO(mateuszc): subcmd usage
-		return fmt.Errorf("subcommand 'update' requires argument specifying package import path")
-	}
-	updatedImp := flags.Arg(0)
-	platforms, err := parsePlatforms(*platformsList)
-	if err != nil {
-		// TODO(mateuszc): subcmd usage
-		return err
-	}
-
-	return Update(updatedImp, platforms, *force, *deletePatch)
+		return Update(updatedImp, platforms, *force, *deletePatch)
+	})
+	cmds.AddCommand(cmd)
 }
 
 func Update(updatedImp string, platforms []Platform, force, deletePatch bool) error {
