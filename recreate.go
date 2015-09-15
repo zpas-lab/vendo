@@ -546,6 +546,9 @@ func hasImportPrefix(imp, prefix string) bool {
 
 func parsePlatforms(platformsList string) ([]Platform, error) {
 	platforms := []Platform{}
+	if platformsList == "" {
+		return nil, nil
+	}
 	for _, entry := range strings.Split(platformsList, ",") {
 		// goos, goarch := splitOsArch(platform)
 		split := strings.SplitN(entry, "_", 2)
