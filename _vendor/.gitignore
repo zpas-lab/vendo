@@ -1,0 +1,5 @@
+.git
+.hg
+.bzr
+/
+!.gitignore

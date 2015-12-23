@@ -1,0 +1,33 @@
+{
+  "tool": "github.com/zpas-lab/vendo",
+  "platforms": [
+    "linux_amd64",
+    "linux_386",
+    "windows_amd64",
+    "windows_386",
+    "darwin_amd64"
+  ],
+  "package": [
+    {
+      "canonical": "github.com/inconshreveable/mousetrap",
+      "local": "_vendor/src/github.com/inconshreveable/mousetrap",
+      "revision": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75",
+      "revisionTime": "2014-10-17T13:07:13-07:00",
+      "repositoryRoot": "_vendor/src/github.com/inconshreveable/mousetrap"
+    },
+    {
+      "canonical": "github.com/spf13/cobra",
+      "local": "_vendor/src/github.com/spf13/cobra",
+      "revision": "db0518444643a7b170abb78164bbeaf5a2bb816f",
+      "revisionTime": "2015-08-16T22:42:27-07:00",
+      "repositoryRoot": "_vendor/src/github.com/spf13/cobra"
+    },
+    {
+      "canonical": "github.com/spf13/pflag",
+      "local": "_vendor/src/github.com/spf13/pflag",
+      "revision": "112aaa578dfdd0e913663b05153be974bd72497a",
+      "revisionTime": "2015-08-16T23:33:29-07:00",
+      "repositoryRoot": "_vendor/src/github.com/spf13/pflag"
+    }
+  ]
+}
