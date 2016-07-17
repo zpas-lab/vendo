@@ -2,10 +2,6 @@
 
 (for third-party Go packages)
 
-**NOTE:** Try stealing as much stuff as possible from http://github.com/skelterjohn/wgo; it seems to be the tool most similar to our plan
-from what's out there (relatively; absolutely, it's not very similar). Also look at the other tools and try stealing too if they have some
-worthy chunks of code. (As long as license is OK for us.)
-
 **NOTE:** The tool will store an additional field `"repositoryPath"` in the *vendor.json* file; this is allowed by
 *[vendor-spec](https://github.com/kardianos/vendor-spec)*. In initial versions, for easier coding, it also won't retain any unknown fields
 in *vendor.json*; this is an **incompatibility** with *vendor-spec*. TODO: [LATER] improve it be compatible with *vendor-spec* (retain the
